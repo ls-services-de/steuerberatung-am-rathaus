@@ -1,5 +1,6 @@
 import "./globals.css";
 import { SpeedInsights } from "@vercel/speed-insights/next"
+import { Analytics } from "@vercel/analytics/react"
 import CookieConsentBanner from "./components/cookies";
 
 export const metadata = {
@@ -18,6 +19,7 @@ export default function RootLayout({ children }) {
         <CookieConsentBanner />
         {children}
         <SpeedInsights />
+        <Analytics/>
         </body>
     </html>
   )
