@@ -6,6 +6,7 @@ import {
   generatePassword,
   generateCustomerNumber,
   getForms,
+  getAppointments,
   assignFormToCustomer,
   unassignFormFromCustomer,
   getContactInquiries,
@@ -13,12 +14,18 @@ import {
   getNotifications,
   markNotificationAsRead,
   markAllNotificationsAsRead,
+  getUserUploadedFiles,
+  getCategories,
+  createCategory,
+  assignCustomerToCategory,
+  removeCustomerFromCategory,
 } from "@/sanity/lib"
 
 export default function AdminDashboard({ onLogout }) {
   const [activeTab, setActiveTab] = useState("customers")
   const [customers, setCustomers] = useState([])
   const [forms, setForms] = useState([])
+  const [appointments, setAppointments] = useState([])
   const [contactInquiries, setContactInquiries] = useState([])
   const [notifications, setNotifications] = useState([])
   const [isLoading, setIsLoading] = useState(true)
@@ -38,16 +45,25 @@ export default function AdminDashboard({ onLogout }) {
   const [selectedCustomer, setSelectedCustomer] = useState(null)
   const [selectedCustomerForms, setSelectedCustomerForms] = useState([])
   const [completedForms, setCompletedForms] = useState([])
+  const [uploadedFiles, setUploadedFiles] = useState([])
 
   // Contact inquiry detail state
   const [selectedInquiry, setSelectedInquiry] = useState(null)
 
-  // Füge diese Zustandsvariablen nach den anderen useState-Deklarationen hinzu
+  // Notification state
   const [lastNotificationFetch, setLastNotificationFetch] = useState(0)
   const [lastMarkAsRead, setLastMarkAsRead] = useState(0)
 
+  // Filter and category state
+  const [customerFilter, setCustomerFilter] = useState("all")
+  const [categories, setCategories] = useState([])
+  const [selectedCategory, setSelectedCategory] = useState(null)
+  const [showCategoryModal, setShowCategoryModal] = useState(false)
+  const [newCategoryName, setNewCategoryName] = useState("")
+  const [showAssignCategoryModal, setShowAssignCategoryModal] = useState(false)
+  const [customerToAssignCategory, setCustomerToAssignCategory] = useState(null)
+
   // Fetch data from Sanity
-  // Ersetze den useEffect-Hook, der die Daten abruft, mit dieser aktualisierten Version
   useEffect(() => {
     async function fetchData() {
       try {
@@ -62,17 +78,28 @@ export default function AdminDashboard({ onLogout }) {
           kundennummer,
           "assignedForms": assignedForms[]->{
             _id,
+            title,
+            questions,
             frageeins,
             fragezwei
           },
-          ausgefuellteformulare
+          ausgefuellteformulare,
+          "categories": categories[]->{ _id, name }
         }`
         const customersResult = await client.fetch(query)
         setCustomers(customersResult)
 
+        // Fetch categories
+        const categoriesResult = await getCategories()
+        setCategories(categoriesResult)
+
         // Fetch forms
         const formsResult = await getForms()
         setForms(formsResult)
+
+        // Fetch appointments
+        const appointmentsResult = await getAppointments()
+        setAppointments(appointmentsResult)
 
         // Fetch contact inquiries
         const contactResult = await getContactInquiries()
@@ -129,6 +156,10 @@ export default function AdminDashboard({ onLogout }) {
           // Also refresh contact inquiries periodically
           const contactResult = await getContactInquiries()
           setContactInquiries(contactResult)
+
+          // Refresh appointments periodically
+          const appointmentsResult = await getAppointments()
+          setAppointments(appointmentsResult)
         } catch (error) {
           console.error("Error fetching updates:", error)
         }
@@ -137,6 +168,28 @@ export default function AdminDashboard({ onLogout }) {
 
     return () => clearInterval(intervalId)
   }, [lastMarkAsRead])
+
+  // Filter customers based on selected filter
+  const filteredCustomers = customers.filter((customer) => {
+    if (customerFilter === "all") return true
+    if (customerFilter === "completed" && customer.ausgefuellteformulare?.length > 0) return true
+    if (
+      customerFilter === "incomplete" &&
+      customer.assignedForms?.length > 0 &&
+      (!customer.ausgefuellteformulare || customer.ausgefuellteformulare.length === 0)
+    )
+      return true
+    if (
+      customerFilter === "noforms" &&
+      (!customer.assignedForms || customer.assignedForms.length === 0) &&
+      (!customer.ausgefuellteformulare || customer.ausgefuellteformulare.length === 0)
+    )
+      return true
+    if (customerFilter === "category" && selectedCategory) {
+      return customer.categories?.some((cat) => cat._id === selectedCategory._id)
+    }
+    return false
+  })
 
   const handleInputChange = (e) => {
     const { name, value } = e.target
@@ -166,12 +219,17 @@ export default function AdminDashboard({ onLogout }) {
         kundennummer: customerNumber,
         assignedForms: [],
         ausgefuellteformulare: [],
+        uploadedFiles: [],
+        categories: [],
       }
 
       const result = await client.create(newCustomer)
 
       // Update local state
-      setCustomers([...customers, { ...result, assignedForms: [], ausgefuellteformulare: [] }])
+      setCustomers([
+        ...customers,
+        { ...result, assignedForms: [], ausgefuellteformulare: [], uploadedFiles: [], categories: [] },
+      ])
       setSuccess(`Kunde erstellt. Passwort: ${password}`)
 
       // Reset form
@@ -268,6 +326,16 @@ export default function AdminDashboard({ onLogout }) {
     setSelectedCustomer(customer)
     setSelectedCustomerForms(customer.assignedForms || [])
     setCompletedForms(customer.ausgefuellteformulare || [])
+
+    // Lade die hochgeladenen Dateien des Kunden
+    try {
+      const files = await getUserUploadedFiles(customer._id)
+      setUploadedFiles(files)
+    } catch (error) {
+      console.error("Error fetching uploaded files:", error)
+      setError("Fehler beim Laden der hochgeladenen Dateien")
+    }
+
     setShowAssignForm(true)
   }
 
@@ -288,10 +356,13 @@ export default function AdminDashboard({ onLogout }) {
           kundennummer,
           "assignedForms": assignedForms[]->{
             _id,
+            title,
+            questions,
             frageeins,
             fragezwei
           },
-          ausgefuellteformulare
+          ausgefuellteformulare,
+          "categories": categories[]->{ _id, name }
         }
       `,
         { userId: selectedCustomer._id },
@@ -325,10 +396,13 @@ export default function AdminDashboard({ onLogout }) {
           kundennummer,
           "assignedForms": assignedForms[]->{
             _id,
+            title,
+            questions,
             frageeins,
             fragezwei
           },
-          ausgefuellteformulare
+          ausgefuellteformulare,
+          "categories": categories[]->{ _id, name }
         }
       `,
         { userId: selectedCustomer._id },
@@ -345,8 +419,103 @@ export default function AdminDashboard({ onLogout }) {
     }
   }
 
-  // Funktionen für Kontaktanfragen und Benachrichtigungen
+  // Category functions
+  const handleCreateCategory = async () => {
+    if (!newCategoryName.trim()) {
+      setError("Bitte geben Sie einen Kategorienamen ein")
+      return
+    }
 
+    try {
+      const newCategory = await createCategory(newCategoryName)
+      setCategories([...categories, newCategory])
+      setNewCategoryName("")
+      setShowCategoryModal(false)
+      setSuccess("Kategorie erstellt")
+    } catch (error) {
+      console.error("Error creating category:", error)
+      setError("Fehler beim Erstellen der Kategorie")
+    }
+  }
+
+  const handleOpenAssignCategoryModal = (customer) => {
+    setCustomerToAssignCategory(customer)
+    setShowAssignCategoryModal(true)
+  }
+
+  const handleAssignCategory = async (categoryId) => {
+    if (!customerToAssignCategory) return
+
+    try {
+      await assignCustomerToCategory(customerToAssignCategory._id, categoryId)
+
+      // Refresh customer data
+      const updatedCustomer = await client.fetch(
+        `*[_type == "userForm" && _id == $customerId][0]{
+          _id,
+          firstName,
+          lastName,
+          email,
+          kundennummer,
+          "assignedForms": assignedForms[]->{
+            _id,
+            title,
+            questions,
+            frageeins,
+            fragezwei
+          },
+          ausgefuellteformulare,
+          "categories": categories[]->{ _id, name }
+        }`,
+        { customerId: customerToAssignCategory._id },
+      )
+
+      // Update local state
+      setCustomers(customers.map((c) => (c._id === customerToAssignCategory._id ? updatedCustomer : c)))
+      setShowAssignCategoryModal(false)
+      setCustomerToAssignCategory(null)
+      setSuccess("Kunde zur Kategorie hinzugefügt")
+    } catch (error) {
+      console.error("Error assigning category:", error)
+      setError("Fehler beim Zuweisen der Kategorie")
+    }
+  }
+
+  const handleRemoveFromCategory = async (customerId, categoryId) => {
+    try {
+      await removeCustomerFromCategory(customerId, categoryId)
+
+      // Refresh customer data
+      const updatedCustomer = await client.fetch(
+        `*[_type == "userForm" && _id == $customerId][0]{
+          _id,
+          firstName,
+          lastName,
+          email,
+          kundennummer,
+          "assignedForms": assignedForms[]->{
+            _id,
+            title,
+            questions,
+            frageeins,
+            fragezwei
+          },
+          ausgefuellteformulare,
+          "categories": categories[]->{ _id, name }
+        }`,
+        { customerId },
+      )
+
+      // Update local state
+      setCustomers(customers.map((c) => (c._id === customerId ? updatedCustomer : c)))
+      setSuccess("Kunde aus Kategorie entfernt")
+    } catch (error) {
+      console.error("Error removing from category:", error)
+      setError("Fehler beim Entfernen aus der Kategorie")
+    }
+  }
+
+  // Funktionen für Kontaktanfragen und Benachrichtigungen
   const handleUpdateContactStatus = async (id, status) => {
     try {
       await updateContactInquiryStatus(id, status)
@@ -417,6 +586,34 @@ export default function AdminDashboard({ onLogout }) {
     })
   }
 
+  // Hilfsfunktion zum Anzeigen des Formularinhalts
+  const getFormDisplayContent = (form) => {
+    if (form.questions && form.questions.length > 0) {
+      return (
+        <div>
+          <p className="font-medium text-white">{form.title || "Formular ohne Titel"}</p>
+          <p className="text-gray-300">{form.questions.length} Fragen</p>
+        </div>
+      )
+    } else if (form.frageeins || form.fragezwei) {
+      // Fallback für alte Formularstruktur
+      return (
+        <div>
+          <p className="font-medium text-white">Frage 1: {form.frageeins}</p>
+          <p className="text-gray-300">Frage 2: {form.fragezwei}</p>
+        </div>
+      )
+    }
+    return <p className="text-gray-300">Leeres Formular</p>
+  }
+
+  // Hilfsfunktion zum Formatieren der Dateigröße
+  const formatFileSize = (bytes) => {
+    if (bytes < 1024) return bytes + " B"
+    else if (bytes < 1048576) return (bytes / 1024).toFixed(2) + " KB"
+    else return (bytes / 1048576).toFixed(2) + " MB"
+  }
+
   return (
     <div className="min-h-screen">
       {/* Header */}
@@ -449,6 +646,14 @@ export default function AdminDashboard({ onLogout }) {
               }`}
             >
               Formulare
+            </button>
+            <button
+              onClick={() => setActiveTab("appointments")}
+              className={`px-3 py-2 rounded-md text-sm font-medium ${
+                activeTab === "appointments" ? "bg-white text-gray-900" : "text-gray-900 hover:bg-white/50"
+              }`}
+            >
+              Termine
             </button>
             <button
               onClick={() => setActiveTab("contact")}
@@ -507,19 +712,79 @@ export default function AdminDashboard({ onLogout }) {
           <div>
             <div className="mb-6 flex justify-between items-center">
               <h2 className="text-xl font-semibold text-white">Kunden</h2>
-              {!isCreating && !isEditing && !showAssignForm && (
+              <div className="flex space-x-2">
                 <button
-                  onClick={() => {
-                    setIsCreating(true)
-                    setIsEditing(false)
-                    setCurrentCustomer(null)
-                    setShowAssignForm(false)
-                  }}
-                  className="px-4 py-2 bg-[#E3DAC9] text-gray-900 rounded-md hover:bg-[#E3DAC9]/80"
+                  onClick={() => setShowCategoryModal(true)}
+                  className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
                 >
-                  Neuer Kunde
+                  Neue Kategorie
                 </button>
-              )}
+                {!isCreating && !isEditing && !showAssignForm && (
+                  <button
+                    onClick={() => {
+                      setIsCreating(true)
+                      setIsEditing(false)
+                      setCurrentCustomer(null)
+                      setShowAssignForm(false)
+                    }}
+                    className="px-4 py-2 bg-[#E3DAC9] text-gray-900 rounded-md hover:bg-[#E3DAC9]/80"
+                  >
+                    Neuer Kunde
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* Filter Controls */}
+            <div className="mb-6 bg-[rgba(227,218,201,0.1)] p-4 rounded-md">
+              <div className="flex flex-wrap items-center gap-4">
+                <div>
+                  <label htmlFor="customerFilter" className="block text-sm font-medium text-white mb-1">
+                    Kunden filtern:
+                  </label>
+                  <select
+                    id="customerFilter"
+                    value={customerFilter}
+                    onChange={(e) => {
+                      setCustomerFilter(e.target.value)
+                      if (e.target.value !== "category") {
+                        setSelectedCategory(null)
+                      }
+                    }}
+                    className="bg-gray-800 text-white rounded-md border border-gray-700 px-3 py-2 focus:outline-none focus:ring-[#E3DAC9] focus:border-[#E3DAC9]"
+                  >
+                    <option value="all">Alle Kunden</option>
+                    <option value="completed">Mit ausgefüllten Formularen</option>
+                    <option value="incomplete">Mit offenen Formularen</option>
+                    <option value="noforms">Ohne Formulare</option>
+                    <option value="category">Nach Kategorie</option>
+                  </select>
+                </div>
+
+                {customerFilter === "category" && (
+                  <div>
+                    <label htmlFor="categorySelect" className="block text-sm font-medium text-white mb-1">
+                      Kategorie auswählen:
+                    </label>
+                    <select
+                      id="categorySelect"
+                      value={selectedCategory?._id || ""}
+                      onChange={(e) => {
+                        const category = categories.find((c) => c._id === e.target.value)
+                        setSelectedCategory(category || null)
+                      }}
+                      className="bg-gray-800 text-white rounded-md border border-gray-700 px-3 py-2 focus:outline-none focus:ring-[#E3DAC9] focus:border-[#E3DAC9]"
+                    >
+                      <option value="">Kategorie wählen</option>
+                      {categories.map((category) => (
+                        <option key={category._id} value={category._id}>
+                          {category.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+              </div>
             </div>
 
             {/* Customer Form */}
@@ -606,6 +871,7 @@ export default function AdminDashboard({ onLogout }) {
                       setSelectedCustomer(null)
                       setSelectedCustomerForms([])
                       setCompletedForms([])
+                      setUploadedFiles([])
                     }}
                     className="text-white hover:text-gray-300"
                   >
@@ -621,10 +887,7 @@ export default function AdminDashboard({ onLogout }) {
                     <ul className="divide-y divide-gray-700">
                       {selectedCustomerForms.map((form) => (
                         <li key={form._id} className="py-3 flex justify-between items-center">
-                          <div>
-                            <p className="font-medium text-white">Frage 1: {form.frageeins}</p>
-                            <p className="text-gray-300">Frage 2: {form.fragezwei}</p>
-                          </div>
+                          {getFormDisplayContent(form)}
                           <button
                             onClick={() => handleUnassignForm(form._id)}
                             className="text-red-400 hover:text-red-300"
@@ -647,10 +910,7 @@ export default function AdminDashboard({ onLogout }) {
                         .filter((form) => !selectedCustomerForms.some((assigned) => assigned._id === form._id))
                         .map((form) => (
                           <li key={form._id} className="py-3 flex justify-between items-center">
-                            <div>
-                              <p className="font-medium text-white">Frage 1: {form.frageeins}</p>
-                              <p className="text-gray-300">Frage 2: {form.fragezwei}</p>
-                            </div>
+                            {getFormDisplayContent(form)}
                             <button
                               onClick={() => handleAssignForm(form._id)}
                               className="text-[#E3DAC9] hover:text-[#E3DAC9]/80"
@@ -663,7 +923,7 @@ export default function AdminDashboard({ onLogout }) {
                   )}
                 </div>
 
-                <div>
+                <div className="mb-6">
                   <h4 className="text-md font-medium mb-2 text-white">Ausgefüllte Formulare</h4>
                   {completedForms.length === 0 ? (
                     <p className="text-gray-300">Keine ausgefüllten Formulare</p>
@@ -674,6 +934,31 @@ export default function AdminDashboard({ onLogout }) {
                           <div className="flex justify-between items-center">
                             <div>
                               <p className="font-medium text-white">Ausgefülltes Formular {index + 1}</p>
+
+                              {/* Zeige zugehörige Dateien an */}
+                              {uploadedFiles.length > 0 && (
+                                <div className="mt-2">
+                                  <p className="text-sm text-gray-400">Zugehörige Dateien:</p>
+                                  <div className="ml-2 mt-1">
+                                    {uploadedFiles.map((file, fileIndex) => (
+                                      <div key={fileIndex} className="flex items-center space-x-2 text-sm">
+                                        <a
+                                          href={file.url}
+                                          target="_blank"
+                                          rel="noopener noreferrer"
+                                          className="text-blue-400 hover:text-blue-300"
+                                        >
+                                          {file.fileName || `Datei ${fileIndex + 1}`}
+                                        </a>
+                                        <span className="text-gray-400">
+                                          {file.fileType && `(${file.fileType})`}
+                                          {file.fileSize && ` - ${formatFileSize(file.fileSize)}`}
+                                        </span>
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
                             </div>
                             <a
                               href={`https://cdn.sanity.io/files/${process.env.NEXT_PUBLIC_SANITY_PROJECT_ID}/${process.env.NEXT_PUBLIC_SANITY_DATASET}/${completed.asset._ref.replace("file-", "").replace("-pdf", ".pdf")}`}
@@ -696,11 +981,22 @@ export default function AdminDashboard({ onLogout }) {
             <div className="bg-[rgba(227,218,201,0.1)] shadow overflow-hidden sm:rounded-lg">
               <div className="px-4 py-5 sm:px-6 bg-[#E3DAC9]/20">
                 <h3 className="text-lg leading-6 font-medium text-white">Kundenliste</h3>
+                <p className="text-sm text-white mt-1">
+                  {customerFilter === "all"
+                    ? "Alle Kunden"
+                    : customerFilter === "completed"
+                      ? "Kunden mit ausgefüllten Formularen"
+                      : customerFilter === "incomplete"
+                        ? "Kunden mit offenen Formularen"
+                        : customerFilter === "noforms"
+                          ? "Kunden ohne Formulare"
+                          : `Kunden in Kategorie: ${selectedCategory?.name || ""}`}
+                </p>
               </div>
               <div className="border-t border-gray-700">
                 {isLoading ? (
                   <div className="px-4 py-5 sm:px-6 text-center text-white">Laden...</div>
-                ) : customers.length === 0 ? (
+                ) : filteredCustomers.length === 0 ? (
                   <div className="px-4 py-5 sm:px-6 text-center text-white">Keine Kunden gefunden</div>
                 ) : (
                   <div className="overflow-x-auto">
@@ -735,7 +1031,7 @@ export default function AdminDashboard({ onLogout }) {
                             scope="col"
                             className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider"
                           >
-                            Ausgefüllt
+                            Kategorien
                           </th>
                           <th
                             scope="col"
@@ -746,7 +1042,7 @@ export default function AdminDashboard({ onLogout }) {
                         </tr>
                       </thead>
                       <tbody className="bg-[rgba(227,218,201,0.05)] divide-y divide-gray-700">
-                        {customers.map((customer) => (
+                        {filteredCustomers.map((customer) => (
                           <tr key={customer._id}>
                             <td className="px-6 py-4 whitespace-nowrap">
                               <div className="flex items-center">
@@ -765,34 +1061,65 @@ export default function AdminDashboard({ onLogout }) {
                               {customer.kundennummer}
                             </td>
                             <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">
-                              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-900 text-blue-200">
-                                {customer.assignedForms ? customer.assignedForms.length : 0} zugewiesen
-                              </span>
+                              <div className="flex flex-col space-y-1">
+                                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-900 text-blue-200">
+                                  {customer.assignedForms ? customer.assignedForms.length : 0} zugewiesen
+                                </span>
+                                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-900 text-green-200">
+                                  {customer.ausgefuellteformulare ? customer.ausgefuellteformulare.length : 0}{" "}
+                                  ausgefüllt
+                                </span>
+                              </div>
                             </td>
                             <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">
-                              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-900 text-green-200">
-                                {customer.ausgefuellteformulare ? customer.ausgefuellteformulare.length : 0} ausgefüllt
-                              </span>
+                              {customer.categories && customer.categories.length > 0 ? (
+                                <div className="flex flex-wrap gap-1">
+                                  {customer.categories.map((category) => (
+                                    <div key={category._id} className="flex items-center">
+                                      <span className="bg-purple-900 text-purple-200 text-xs rounded-l px-2 py-0.5">
+                                        {category.name}
+                                      </span>
+                                      <button
+                                        onClick={() => handleRemoveFromCategory(customer._id, category._id)}
+                                        className="bg-purple-800 text-purple-200 text-xs rounded-r px-1 py-0.5 hover:bg-purple-700"
+                                        title="Aus Kategorie entfernen"
+                                      >
+                                        ✕
+                                      </button>
+                                    </div>
+                                  ))}
+                                </div>
+                              ) : (
+                                <span className="text-gray-500">Keine Kategorien</span>
+                              )}
                             </td>
                             <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">
-                              <button
-                                onClick={() => handleEditCustomer(customer)}
-                                className="text-[#E3DAC9] hover:text-[#E3DAC9]/80 mr-3"
-                              >
-                                Bearbeiten
-                              </button>
-                              <button
-                                onClick={() => handleOpenAssignForm(customer)}
-                                className="text-blue-400 hover:text-blue-300 mr-3"
-                              >
-                                Formulare
-                              </button>
-                              <button
-                                onClick={() => handleDeleteCustomer(customer._id)}
-                                className="text-red-400 hover:text-red-300"
-                              >
-                                Löschen
-                              </button>
+                              <div className="flex space-x-2">
+                                <button
+                                  onClick={() => handleEditCustomer(customer)}
+                                  className="text-[#E3DAC9] hover:text-[#E3DAC9]/80"
+                                >
+                                  Bearbeiten
+                                </button>
+                                <button
+                                  onClick={() => handleOpenAssignForm(customer)}
+                                  className="text-blue-400 hover:text-blue-300"
+                                >
+                                  Formulare
+                                </button>
+                                <button
+                                  onClick={() => handleOpenAssignCategoryModal(customer)}
+                                  className="text-purple-400 hover:text-purple-300"
+                                >
+                                  Kategorie
+                                </button>
+                                <button
+                                  onClick={() => handleDeleteCustomer(customer._id)}
+                                  className="text-red-400 hover:text-red-300"
+                                >
+                                  Löschen
+                                </button>
+                              </div>
                             </td>
                           </tr>
                         ))}
@@ -828,13 +1155,13 @@ export default function AdminDashboard({ onLogout }) {
                           scope="col"
                           className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider"
                         >
-                          Frage 1
+                          Titel
                         </th>
                         <th
                           scope="col"
                           className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider"
                         >
-                          Frage 2
+                          Fragen
                         </th>
                         <th
                           scope="col"
@@ -849,9 +1176,11 @@ export default function AdminDashboard({ onLogout }) {
                         <tr key={form._id}>
                           <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">{form._id}</td>
                           <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-white">
-                            {form.frageeins}
+                            {form.title || (form.frageeins ? "Frage: " + form.frageeins : "Ohne Titel")}
                           </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">{form.fragezwei}</td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">
+                            {form.questions ? form.questions.length : form.frageeins && form.fragezwei ? 2 : 0}
+                          </td>
                           <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">
                             {
                               customers.filter(
@@ -872,6 +1201,90 @@ export default function AdminDashboard({ onLogout }) {
                     </tbody>
                   </table>
                 </div>
+              </div>
+            </div>
+          </section>
+        )}
+
+        {/* Appointments Tab */}
+        {activeTab === "appointments" && (
+          <section>
+            <div className="bg-[rgba(227,218,201,0.1)] shadow overflow-hidden sm:rounded-lg">
+              <div className="px-4 py-5 sm:px-6 bg-[#E3DAC9]/20">
+                <h2 className="text-lg leading-6 font-medium text-white">Terminbuchungen</h2>
+                <p className="mt-1 max-w-2xl text-sm text-white">Übersicht aller gebuchten Termine</p>
+              </div>
+              <div className="border-t border-gray-700">
+                {isLoading ? (
+                  <div className="px-4 py-5 sm:px-6 text-center text-white">Laden...</div>
+                ) : appointments.length === 0 ? (
+                  <div className="px-4 py-5 sm:px-6 text-center text-white">Keine Termine vorhanden</div>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="min-w-full divide-y divide-gray-700">
+                      <thead className="bg-gray-800">
+                        <tr>
+                          <th
+                            scope="col"
+                            className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider"
+                          >
+                            Name
+                          </th>
+                          <th
+                            scope="col"
+                            className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider"
+                          >
+                            Email
+                          </th>
+                          <th
+                            scope="col"
+                            className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider"
+                          >
+                            Telefon
+                          </th>
+                          <th
+                            scope="col"
+                            className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider"
+                          >
+                            Termin
+                          </th>
+                          <th
+                            scope="col"
+                            className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider"
+                          >
+                            Link
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody className="bg-[rgba(227,218,201,0.05)] divide-y divide-gray-700">
+                        {appointments.map((appointment) => (
+                          <tr key={appointment._id}>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-white">
+                              {appointment.name}
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">{appointment.email}</td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">{appointment.phone}</td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">{appointment.uhrzeit}</td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">
+                              {appointment.link ? (
+                                <a
+                                  href={appointment.link}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-blue-400 hover:text-blue-300"
+                                >
+                                  Meeting öffnen
+                                </a>
+                              ) : (
+                                "Kein Link"
+                              )}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
               </div>
             </div>
           </section>
@@ -1165,6 +1578,122 @@ export default function AdminDashboard({ onLogout }) {
               </div>
             </div>
           </section>
+        )}
+
+        {/* Create Category Modal */}
+        {showCategoryModal && (
+          <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50">
+            <div className="bg-[rgba(227,218,201,0.1)] rounded-lg shadow-lg max-w-md w-full mx-4">
+              <div className="px-6 py-4 border-b border-gray-700 flex justify-between items-center">
+                <h3 className="text-xl font-medium text-white">Neue Kategorie erstellen</h3>
+                <button onClick={() => setShowCategoryModal(false)} className="text-gray-300 hover:text-white">
+                  ✕
+                </button>
+              </div>
+              <div className="px-6 py-4">
+                <div className="mb-4">
+                  <label htmlFor="categoryName" className="block text-sm font-medium text-white mb-2">
+                    Kategoriename
+                  </label>
+                  <input
+                    type="text"
+                    id="categoryName"
+                    value={newCategoryName}
+                    onChange={(e) => setNewCategoryName(e.target.value)}
+                    className="w-full bg-gray-800 border border-gray-700 rounded-md shadow-sm py-2 px-3 text-white focus:outline-none focus:ring-[#E3DAC9] focus:border-[#E3DAC9]"
+                    placeholder="z.B. VIP-Kunden, Neukunden, etc."
+                  />
+                </div>
+                <div className="flex justify-end space-x-2">
+                  <button
+                    onClick={() => setShowCategoryModal(false)}
+                    className="px-4 py-2 bg-gray-700 text-white rounded-md hover:bg-gray-600"
+                  >
+                    Abbrechen
+                  </button>
+                  <button
+                    onClick={handleCreateCategory}
+                    className="px-4 py-2 bg-[#E3DAC9] text-black rounded-md hover:bg-[#E3DAC9]/80"
+                  >
+                    Erstellen
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Assign Category Modal */}
+        {showAssignCategoryModal && customerToAssignCategory && (
+          <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50">
+            <div className="bg-[rgba(227,218,201,0.1)] rounded-lg shadow-lg max-w-md w-full mx-4">
+              <div className="px-6 py-4 border-b border-gray-700 flex justify-between items-center">
+                <h3 className="text-xl font-medium text-white">Kategorie zuweisen</h3>
+                <button
+                  onClick={() => {
+                    setShowAssignCategoryModal(false)
+                    setCustomerToAssignCategory(null)
+                  }}
+                  className="text-gray-300 hover:text-white"
+                >
+                  ✕
+                </button>
+              </div>
+              <div className="px-6 py-4">
+                <p className="text-white mb-4">
+                  Wählen Sie eine Kategorie für{" "}
+                  <span className="font-semibold">
+                    {customerToAssignCategory.firstName} {customerToAssignCategory.lastName}
+                  </span>
+                  :
+                </p>
+
+                {categories.length === 0 ? (
+                  <p className="text-gray-300 mb-4">
+                    Keine Kategorien vorhanden. Bitte erstellen Sie zuerst eine Kategorie.
+                  </p>
+                ) : (
+                  <div className="mb-4 space-y-2">
+                    {categories.map((category) => {
+                      // Prüfen, ob der Kunde bereits in dieser Kategorie ist
+                      const isAlreadyAssigned = customerToAssignCategory.categories?.some((c) => c._id === category._id)
+
+                      return (
+                        <div
+                          key={category._id}
+                          className="flex items-center justify-between p-2 bg-gray-800 rounded-md"
+                        >
+                          <span className="text-white">{category.name}</span>
+                          {isAlreadyAssigned ? (
+                            <span className="text-green-400 text-sm">Bereits zugewiesen</span>
+                          ) : (
+                            <button
+                              onClick={() => handleAssignCategory(category._id)}
+                              className="px-3 py-1 bg-[#E3DAC9] text-black rounded-md hover:bg-[#E3DAC9]/80 text-sm"
+                            >
+                              Zuweisen
+                            </button>
+                          )}
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
+
+                <div className="flex justify-end">
+                  <button
+                    onClick={() => {
+                      setShowAssignCategoryModal(false)
+                      setCustomerToAssignCategory(null)
+                    }}
+                    className="px-4 py-2 bg-gray-700 text-white rounded-md hover:bg-gray-600"
+                  >
+                    Schließen
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
         )}
       </main>
     </div>

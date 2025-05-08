@@ -1,5 +1,6 @@
 import Image from "next/image"
 
+
 export default function AboutUsSection() {
   return (
     <section className=" text-white py-16 px-6 lg:px-12">

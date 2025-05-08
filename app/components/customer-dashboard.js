@@ -1,20 +1,27 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { getAssignedForms, getCompletedForms, submitCompletedForm, removeFormAfterCompletion } from "@/sanity/lib"
+import {
+  getAssignedForms,
+  getCompletedForms,
+  submitCompletedForm,
+  removeFormAfterCompletion,
+  uploadFileAndAssignToUser,
+  getUserUploadedFiles,
+} from "@/sanity/lib"
 
 export default function CustomerDashboard({ user, onLogout }) {
   const [assignedForms, setAssignedForms] = useState([])
   const [completedForms, setCompletedForms] = useState([])
+  const [uploadedFiles, setUploadedFiles] = useState([])
   const [isLoading, setIsLoading] = useState(true)
   const [currentForm, setCurrentForm] = useState(null)
-  const [formAnswers, setFormAnswers] = useState({
-    frageeins: "",
-    fragezwei: "",
-  })
+  const [formAnswers, setFormAnswers] = useState({})
+  const [fileUploads, setFileUploads] = useState({})
   const [error, setError] = useState("")
   const [success, setSuccess] = useState("")
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [uploadProgress, setUploadProgress] = useState({})
 
   useEffect(() => {
     async function fetchData() {
@@ -26,9 +33,13 @@ export default function CustomerDashboard({ user, onLogout }) {
         // Fetch completed forms
         const completed = await getCompletedForms(user._id)
         setCompletedForms(completed.ausgefuellteformulare || [])
+
+        // Fetch uploaded files
+        const files = await getUserUploadedFiles(user._id)
+        setUploadedFiles(files || [])
       } catch (error) {
-        console.error("Error fetching forms:", error)
-        setError("Fehler beim Laden der Formulare")
+        console.error("Error fetching data:", error)
+        setError("Fehler beim Laden der Daten")
       } finally {
         setIsLoading(false)
       }
@@ -37,28 +48,46 @@ export default function CustomerDashboard({ user, onLogout }) {
     fetchData()
   }, [user._id])
 
-  const handleInputChange = (e) => {
-    const { name, value } = e.target
-    setFormAnswers({
-      ...formAnswers,
-      [name]: value,
-    })
+  const handleInputChange = (e, index, type = "text") => {
+    const { name, value, checked, files } = e.target
+
+    if (type === "checkbox") {
+      // Handle checkbox inputs
+      setFormAnswers((prev) => {
+        const currentValues = prev[`question_${index}`] || []
+        if (checked) {
+          return { ...prev, [`question_${index}`]: [...currentValues, value] }
+        } else {
+          return { ...prev, [`question_${index}`]: currentValues.filter((v) => v !== value) }
+        }
+      })
+    } else if (type === "file") {
+      // Handle file uploads
+      if (files && files.length > 0) {
+        const file = files[0]
+        setFileUploads((prev) => ({ ...prev, [`file_${index}`]: file }))
+        setUploadProgress((prev) => ({ ...prev, [`file_${index}`]: 0 }))
+      }
+    } else {
+      // Handle text and other inputs
+      setFormAnswers((prev) => ({ ...prev, [`question_${index}`]: value }))
+    }
   }
 
   const handleStartForm = (form) => {
     setCurrentForm(form)
-    setFormAnswers({
-      frageeins: "",
-      fragezwei: "",
-    })
+    setFormAnswers({})
+    setFileUploads({})
+    setUploadProgress({})
+    setError("")
   }
 
   const handleCancelForm = () => {
     setCurrentForm(null)
-    setFormAnswers({
-      frageeins: "",
-      fragezwei: "",
-    })
+    setFormAnswers({})
+    setFileUploads({})
+    setUploadProgress({})
+    setError("")
   }
 
   const handleSubmitForm = async (e) => {
@@ -68,8 +97,59 @@ export default function CustomerDashboard({ user, onLogout }) {
     setIsSubmitting(true)
 
     try {
+      // Sammle alle Antworten, einschließlich Dateien
+      const answersWithFiles = { ...formAnswers }
+
+      // Wenn Dateien hochgeladen wurden, verarbeite sie
+      if (Object.keys(fileUploads).length > 0) {
+        for (const [key, file] of Object.entries(fileUploads)) {
+          try {
+            // Extrahiere den Index aus dem Schlüssel (z.B. "file_0" -> 0)
+            const questionIndex = Number.parseInt(key.split("_")[1])
+
+            // Aktualisiere den Upload-Fortschritt
+            setUploadProgress((prev) => ({ ...prev, [key]: 10 }))
+
+            // Lade die Datei hoch und ordne sie dem Benutzer zu
+            // Die Datei wird jetzt automatisch auch zu ausgefuellteformulare hinzugefügt
+            const uploadResult = await uploadFileAndAssignToUser(user._id, file, questionIndex, currentForm._id)
+
+            // Aktualisiere den Upload-Fortschritt
+            setUploadProgress((prev) => ({ ...prev, [key]: 100 }))
+
+            // Füge die Dateiinformationen zu den Antworten hinzu
+            answersWithFiles[key] = {
+              fileName: file.name,
+              fileType: file.type,
+              fileSize: file.size,
+              fileId: uploadResult.fileId,
+              fileUrl: uploadResult.url,
+              fileKey: uploadResult.key,
+            }
+
+            // Aktualisiere die Liste der hochgeladenen Dateien
+            setUploadedFiles((prev) => [
+              ...prev,
+              {
+                _key: uploadResult.key,
+                fileName: file.name,
+                fileType: file.type,
+                fileSize: file.size,
+                formId: currentForm._id,
+                questionIndex: questionIndex,
+                uploadDate: new Date().toISOString(),
+                url: uploadResult.url,
+              },
+            ])
+          } catch (uploadError) {
+            console.error("Fehler beim Datei-Upload:", uploadError)
+            throw new Error(`Fehler beim Hochladen der Datei: ${file.name}. ${uploadError.message}`)
+          }
+        }
+      }
+
       // Submit completed form to Sanity
-      await submitCompletedForm(user._id, currentForm, formAnswers)
+      await submitCompletedForm(user._id, currentForm, answersWithFiles)
 
       // Remove the form from assigned forms
       await removeFormAfterCompletion(user._id, currentForm._id)
@@ -83,16 +163,233 @@ export default function CustomerDashboard({ user, onLogout }) {
 
       setSuccess("Formular erfolgreich ausgefüllt")
       setCurrentForm(null)
-      setFormAnswers({
-        frageeins: "",
-        fragezwei: "",
-      })
+      setFormAnswers({})
+      setFileUploads({})
+      setUploadProgress({})
     } catch (error) {
       console.error("Error submitting form:", error)
-      setError("Fehler beim Absenden des Formulars")
+      setError(`Fehler beim Absenden des Formulars: ${error.message}`)
     } finally {
       setIsSubmitting(false)
     }
+  }
+
+  // Hilfsfunktion zum Rendern der Formularfelder basierend auf dem Fragetyp
+  const renderFormField = (question, index) => {
+    if (!question) return null
+
+    // Fallback für alte Formularstruktur
+    if (typeof question === "string") {
+      return (
+        <div key={index} className="space-y-2">
+          <label htmlFor={`question_${index}`} className="block text-sm font-medium text-white">
+            {question}
+          </label>
+          <input
+            type="text"
+            name={`question_${index}`}
+            id={`question_${index}`}
+            value={formAnswers[`question_${index}`] || ""}
+            onChange={(e) => handleInputChange(e, index)}
+            required
+            className="mt-1 block w-full bg-gray-800 border border-gray-700 rounded-md shadow-sm py-2 px-3 text-white focus:outline-none focus:ring-[#E3DAC9] focus:border-[#E3DAC9]"
+          />
+        </div>
+      )
+    }
+
+    // Neue Formularstruktur
+    switch (question.questionType) {
+      case "text":
+        return (
+          <div key={index} className="space-y-2">
+            <label htmlFor={`question_${index}`} className="block text-sm font-medium text-white">
+              {question.questionText}
+              {question.required && <span className="text-red-500 ml-1">*</span>}
+            </label>
+            <input
+              type="text"
+              name={`question_${index}`}
+              id={`question_${index}`}
+              value={formAnswers[`question_${index}`] || ""}
+              onChange={(e) => handleInputChange(e, index)}
+              required={question.required}
+              className="mt-1 block w-full bg-gray-800 border border-gray-700 rounded-md shadow-sm py-2 px-3 text-white focus:outline-none focus:ring-[#E3DAC9] focus:border-[#E3DAC9]"
+            />
+          </div>
+        )
+
+      case "checkbox":
+        return (
+          <div key={index} className="space-y-2">
+            <fieldset>
+              <legend className="block text-sm font-medium text-white mb-2">
+                {question.questionText}
+                {question.required && <span className="text-red-500 ml-1">*</span>}
+              </legend>
+              <div className="space-y-2">
+                {question.options &&
+                  question.options.map((option, optionIndex) => (
+                    <div key={optionIndex} className="flex items-center">
+                      <input
+                        id={`question_${index}_option_${optionIndex}`}
+                        name={`question_${index}_option_${optionIndex}`}
+                        type="checkbox"
+                        value={option}
+                        checked={(formAnswers[`question_${index}`] || []).includes(option)}
+                        onChange={(e) => handleInputChange(e, index, "checkbox")}
+                        className="h-4 w-4 text-[#E3DAC9] focus:ring-[#E3DAC9] border-gray-700 rounded bg-gray-800"
+                      />
+                      <label
+                        htmlFor={`question_${index}_option_${optionIndex}`}
+                        className="ml-3 block text-sm text-white"
+                      >
+                        {option}
+                      </label>
+                    </div>
+                  ))}
+              </div>
+            </fieldset>
+          </div>
+        )
+
+      case "multipleChoice":
+        return (
+          <div key={index} className="space-y-2">
+            <fieldset>
+              <legend className="block text-sm font-medium text-white mb-2">
+                {question.questionText}
+                {question.required && <span className="text-red-500 ml-1">*</span>}
+              </legend>
+              <div className="space-y-2">
+                {question.options &&
+                  question.options.map((option, optionIndex) => (
+                    <div key={optionIndex} className="flex items-center">
+                      <input
+                        id={`question_${index}_option_${optionIndex}`}
+                        name={`question_${index}`}
+                        type="radio"
+                        value={option}
+                        checked={formAnswers[`question_${index}`] === option}
+                        onChange={(e) => handleInputChange(e, index)}
+                        required={question.required}
+                        className="h-4 w-4 text-[#E3DAC9] focus:ring-[#E3DAC9] border-gray-700 bg-gray-800"
+                      />
+                      <label
+                        htmlFor={`question_${index}_option_${optionIndex}`}
+                        className="ml-3 block text-sm text-white"
+                      >
+                        {option}
+                      </label>
+                    </div>
+                  ))}
+              </div>
+            </fieldset>
+          </div>
+        )
+
+      case "fileUpload":
+        const fileKey = `file_${index}`
+        const progress = uploadProgress[fileKey] || 0
+        const fileUpload = fileUploads[fileKey]
+
+        // Finde bereits hochgeladene Dateien für diese Frage
+        const existingFiles = uploadedFiles.filter(
+          (file) => file.formId === currentForm._id && file.questionIndex === index,
+        )
+
+        return (
+          <div key={index} className="space-y-2">
+            <label htmlFor={fileKey} className="block text-sm font-medium text-white">
+              {question.questionText}
+              {question.required && <span className="text-red-500 ml-1">*</span>}
+            </label>
+            <input
+              type="file"
+              id={fileKey}
+              name={fileKey}
+              onChange={(e) => handleInputChange(e, index, "file")}
+              required={question.required && existingFiles.length === 0}
+              className="mt-1 block w-full text-white file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-medium file:bg-[#E3DAC9] file:text-black hover:file:bg-[#E3DAC9]/80"
+            />
+
+            {/* Zeige bereits hochgeladene Dateien an */}
+            {existingFiles.length > 0 && (
+              <div className="mt-2 space-y-2">
+                <p className="text-sm font-medium text-white">Bereits hochgeladene Dateien:</p>
+                <ul className="space-y-1">
+                  {existingFiles.map((file) => (
+                    <li key={file._key} className="flex items-center space-x-2">
+                      <span className="text-sm text-green-400">{file.fileName}</span>
+                      <a
+                        href={file.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-xs text-blue-400 hover:text-blue-300"
+                      >
+                        Öffnen
+                      </a>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {fileUpload && (
+              <div className="mt-2">
+                <p className="text-sm text-green-400">Datei ausgewählt: {fileUpload.name}</p>
+
+                {isSubmitting && (
+                  <div className="w-full bg-gray-700 rounded-full h-2.5 mt-1">
+                    <div className="bg-[#E3DAC9] h-2.5 rounded-full" style={{ width: `${progress}%` }}></div>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )
+
+      default:
+        return (
+          <div key={index} className="space-y-2">
+            <label htmlFor={`question_${index}`} className="block text-sm font-medium text-white">
+              {question.questionText}
+              {question.required && <span className="text-red-500 ml-1">*</span>}
+            </label>
+            <input
+              type="text"
+              name={`question_${index}`}
+              id={`question_${index}`}
+              value={formAnswers[`question_${index}`] || ""}
+              onChange={(e) => handleInputChange(e, index)}
+              required={question.required}
+              className="mt-1 block w-full bg-gray-800 border border-gray-700 rounded-md shadow-sm py-2 px-3 text-white focus:outline-none focus:ring-[#E3DAC9] focus:border-[#E3DAC9]"
+            />
+          </div>
+        )
+    }
+  }
+
+  // Hilfsfunktion zum Anzeigen des Formularinhalts
+  const getFormDisplayContent = (form) => {
+    if (form.questions && form.questions.length > 0) {
+      return (
+        <div>
+          <h3 className="text-lg leading-6 font-medium text-white">{form.title || "Formular"}</h3>
+          <p className="mt-1 max-w-2xl text-sm text-white">{form.questions.length} Fragen</p>
+        </div>
+      )
+    } else if (form.frageeins || form.fragezwei) {
+      // Fallback für alte Formularstruktur
+      return (
+        <div>
+          <h3 className="text-lg leading-6 font-medium text-white">Formular</h3>
+          <p className="mt-1 max-w-2xl text-sm text-white">Frage 1: {form.frageeins}</p>
+          <p className="mt-1 max-w-2xl text-sm text-white">Frage 2: {form.fragezwei}</p>
+        </div>
+      )
+    }
+    return <h3 className="text-lg leading-6 font-medium text-white">Leeres Formular</h3>
   }
 
   return (
@@ -154,38 +451,47 @@ export default function CustomerDashboard({ user, onLogout }) {
           <div className="bg-[rgba(227,218,201,0.1)] shadow overflow-hidden sm:rounded-lg mb-6">
             <div className="px-4 py-5 sm:px-6 bg-[#E3DAC9]/20">
               <h2 className="text-lg leading-6 font-medium text-white">Formular ausfüllen</h2>
+              {currentForm.title && <p className="text-white mt-1">{currentForm.title}</p>}
             </div>
             <div className="border-t border-gray-700 px-4 py-5 sm:px-6">
               <form onSubmit={handleSubmitForm}>
                 <div className="space-y-6">
-                  <div>
-                    <label htmlFor="frageeins" className="block text-sm font-medium text-white">
-                      {currentForm.frageeins}
-                    </label>
-                    <input
-                      type="text"
-                      name="frageeins"
-                      id="frageeins"
-                      value={formAnswers.frageeins}
-                      onChange={handleInputChange}
-                      required
-                      className="mt-1 block w-full bg-gray-800 border border-gray-700 rounded-md shadow-sm py-2 px-3 text-white focus:outline-none focus:ring-[#E3DAC9] focus:border-[#E3DAC9]"
-                    />
-                  </div>
-                  <div>
-                    <label htmlFor="fragezwei" className="block text-sm font-medium text-white">
-                      {currentForm.fragezwei}
-                    </label>
-                    <input
-                      type="text"
-                      name="fragezwei"
-                      id="fragezwei"
-                      value={formAnswers.fragezwei}
-                      onChange={handleInputChange}
-                      required
-                      className="mt-1 block w-full bg-gray-800 border border-gray-700 rounded-md shadow-sm py-2 px-3 text-white focus:outline-none focus:ring-[#E3DAC9] focus:border-[#E3DAC9]"
-                    />
-                  </div>
+                  {currentForm.questions && currentForm.questions.length > 0 ? (
+                    // Neue Formularstruktur
+                    currentForm.questions.map((question, index) => renderFormField(question, index))
+                  ) : (
+                    // Fallback für alte Formularstruktur
+                    <>
+                      <div className="space-y-2">
+                        <label htmlFor="frageeins" className="block text-sm font-medium text-white">
+                          {currentForm.frageeins}
+                        </label>
+                        <input
+                          type="text"
+                          name="frageeins"
+                          id="frageeins"
+                          value={formAnswers.frageeins || ""}
+                          onChange={(e) => setFormAnswers({ ...formAnswers, frageeins: e.target.value })}
+                          required
+                          className="mt-1 block w-full bg-gray-800 border border-gray-700 rounded-md shadow-sm py-2 px-3 text-white focus:outline-none focus:ring-[#E3DAC9] focus:border-[#E3DAC9]"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <label htmlFor="fragezwei" className="block text-sm font-medium text-white">
+                          {currentForm.fragezwei}
+                        </label>
+                        <input
+                          type="text"
+                          name="fragezwei"
+                          id="fragezwei"
+                          value={formAnswers.fragezwei || ""}
+                          onChange={(e) => setFormAnswers({ ...formAnswers, fragezwei: e.target.value })}
+                          required
+                          className="mt-1 block w-full bg-gray-800 border border-gray-700 rounded-md shadow-sm py-2 px-3 text-white focus:outline-none focus:ring-[#E3DAC9] focus:border-[#E3DAC9]"
+                        />
+                      </div>
+                    </>
+                  )}
                 </div>
                 <div className="mt-6 flex space-x-3">
                   <button
@@ -224,11 +530,7 @@ export default function CustomerDashboard({ user, onLogout }) {
                 {assignedForms.map((form) => (
                   <li key={form._id} className="px-4 py-5 sm:px-6">
                     <div className="flex justify-between items-center">
-                      <div>
-                        <h3 className="text-lg leading-6 font-medium text-white">Formular</h3>
-                        <p className="mt-1 max-w-2xl text-sm text-white">Frage 1: {form.frageeins}</p>
-                        <p className="mt-1 max-w-2xl text-sm text-white">Frage 2: {form.fragezwei}</p>
-                      </div>
+                      {getFormDisplayContent(form)}
                       <button
                         onClick={() => handleStartForm(form)}
                         className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-black bg-[#E3DAC9] hover:bg-[#E3DAC9]/80 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#E3DAC9]"
