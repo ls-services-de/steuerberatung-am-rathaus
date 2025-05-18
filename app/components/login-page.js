@@ -69,7 +69,7 @@ export default function LoginPage({ onLogin }) {
           <div className="rounded-md shadow-sm -space-y-px">
             <div>
               <label htmlFor="username" className="sr-only">
-                Email / Benutzername
+                Email
               </label>
               <input
                 id="username"
@@ -77,7 +77,7 @@ export default function LoginPage({ onLogin }) {
                 type="text"
                 required
                 className="appearance-none rounded-none relative block w-full px-3 py-2 border border-gray-300 placeholder-[#E4E4E4] text-white bg-[rgba(227,218,201,0.05)] rounded-t-md focus:outline-none focus:ring-[#E3DAC9] focus:border-[#E3DAC9] focus:z-10 sm:text-sm"
-                placeholder="Email / Benutzername"
+                placeholder="Email"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
               />

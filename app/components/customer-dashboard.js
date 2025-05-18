@@ -192,7 +192,7 @@ export default function CustomerDashboard({ user, onLogout }) {
             value={formAnswers[`question_${index}`] || ""}
             onChange={(e) => handleInputChange(e, index)}
             required
-            className="mt-1 block w-full bg-gray-800 border border-gray-700 rounded-md shadow-sm py-2 px-3 text-white focus:outline-none focus:ring-[#E3DAC9] focus:border-[#E3DAC9]"
+            className="mt-1 block w-full bg-[rgba(227,218,201,0.1)] border  rounded-md shadow-sm py-2 px-3 text-white focus:outline-none focus:ring-[#E3DAC9] focus:border-[#E3DAC9]"
           />
         </div>
       )
@@ -214,7 +214,7 @@ export default function CustomerDashboard({ user, onLogout }) {
               value={formAnswers[`question_${index}`] || ""}
               onChange={(e) => handleInputChange(e, index)}
               required={question.required}
-              className="mt-1 block w-full bg-gray-800 border border-gray-700 rounded-md shadow-sm py-2 px-3 text-white focus:outline-none focus:ring-[#E3DAC9] focus:border-[#E3DAC9]"
+              className="mt-1 block w-full bg-[rgba(227,218,201,0.1)] border  rounded-md shadow-sm py-2 px-3 text-white focus:outline-none focus:ring-[#E3DAC9] focus:border-[#E3DAC9]"
             />
           </div>
         )
@@ -238,7 +238,7 @@ export default function CustomerDashboard({ user, onLogout }) {
                         value={option}
                         checked={(formAnswers[`question_${index}`] || []).includes(option)}
                         onChange={(e) => handleInputChange(e, index, "checkbox")}
-                        className="h-4 w-4 text-[#E3DAC9] focus:ring-[#E3DAC9] border-gray-700 rounded bg-gray-800"
+                        className="h-4 w-4 text-[#E3DAC9] focus:ring-[#E3DAC9]  rounded bg-[rgba(227,218,201,0.1)]"
                       />
                       <label
                         htmlFor={`question_${index}_option_${optionIndex}`}
@@ -273,7 +273,7 @@ export default function CustomerDashboard({ user, onLogout }) {
                         checked={formAnswers[`question_${index}`] === option}
                         onChange={(e) => handleInputChange(e, index)}
                         required={question.required}
-                        className="h-4 w-4 text-[#E3DAC9] focus:ring-[#E3DAC9] border-gray-700 bg-gray-800"
+                        className="h-4 w-4 text-[#E3DAC9] focus:ring-[#E3DAC9]  bg-[rgba(227,218,201,0.1)]"
                       />
                       <label
                         htmlFor={`question_${index}_option_${optionIndex}`}
@@ -320,12 +320,12 @@ export default function CustomerDashboard({ user, onLogout }) {
                 <ul className="space-y-1">
                   {existingFiles.map((file) => (
                     <li key={file._key} className="flex items-center space-x-2">
-                      <span className="text-sm text-green-400">{file.fileName}</span>
+                      <span className="text-sm text-[#E3DAC9]">{file.fileName}</span>
                       <a
                         href={file.url}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="text-xs text-blue-400 hover:text-blue-300"
+                        className="text-xs text-white "
                       >
                         Öffnen
                       </a>
@@ -337,10 +337,10 @@ export default function CustomerDashboard({ user, onLogout }) {
 
             {fileUpload && (
               <div className="mt-2">
-                <p className="text-sm text-green-400">Datei ausgewählt: {fileUpload.name}</p>
+                <p className="text-sm text-[#E3DAC9]">Datei ausgewählt: {fileUpload.name}</p>
 
                 {isSubmitting && (
-                  <div className="w-full bg-gray-700 rounded-full h-2.5 mt-1">
+                  <div className="w-full bg-[rgba(227,218,201,0.1)] rounded-full h-2.5 mt-1">
                     <div className="bg-[#E3DAC9] h-2.5 rounded-full" style={{ width: `${progress}%` }}></div>
                   </div>
                 )}
@@ -363,7 +363,7 @@ export default function CustomerDashboard({ user, onLogout }) {
               value={formAnswers[`question_${index}`] || ""}
               onChange={(e) => handleInputChange(e, index)}
               required={question.required}
-              className="mt-1 block w-full bg-gray-800 border border-gray-700 rounded-md shadow-sm py-2 px-3 text-white focus:outline-none focus:ring-[#E3DAC9] focus:border-[#E3DAC9]"
+              className="mt-1 block w-full bg-[rgba(227,218,201,0.1)]  rounded-md shadow-sm py-2 px-3 text-white focus:outline-none focus:ring-[#E3DAC9] focus:border-[#E3DAC9]"
             />
           </div>
         )
@@ -504,7 +504,7 @@ export default function CustomerDashboard({ user, onLogout }) {
                   <button
                     type="button"
                     onClick={handleCancelForm}
-                    className="inline-flex justify-center py-2 px-4 border border-gray-700 shadow-sm text-sm font-medium rounded-md text-white bg-gray-800 hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#E3DAC9]"
+                    className="inline-flex justify-center py-2 px-4 border  shadow-sm text-sm font-medium rounded-md text-white bg-[rgba(227,218,201,0.1)]  focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#E3DAC9]"
                   >
                     Abbrechen
                   </button>
@@ -569,7 +569,7 @@ export default function CustomerDashboard({ user, onLogout }) {
                         href={`https://cdn.sanity.io/files/${process.env.NEXT_PUBLIC_SANITY_PROJECT_ID}/${process.env.NEXT_PUBLIC_SANITY_DATASET}/${completed.asset._ref.replace("file-", "").replace("-pdf", ".pdf")}`}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="inline-flex items-center px-4 py-2 border border-gray-700 shadow-sm text-sm font-medium rounded-md text-white bg-gray-800 hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#E3DAC9]"
+                        className="inline-flex items-center px-4 py-2 border  shadow-sm text-sm font-medium rounded-md text-white bg-[rgba(227,218,201,0.1)]  focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#E3DAC9]"
                       >
                         PDF öffnen
                       </a>
