@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server"
-import { client, generateUniqueKey } from "@/lib/sanity"
+import { client, generateUniqueKey } from "@/sanity/lib"
 
 export async function POST(request) {
   try {

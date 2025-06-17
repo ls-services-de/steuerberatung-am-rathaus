@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server"
-import { client, generateUniqueKey } from "@/lib/sanity"
-import { createNotification } from "@/lib/actions"
+import { client, generateUniqueKey } from "@/sanity/lib"
+import { createNotification } from "@/sanity/actions"
 
 export async function POST(request) {
   try {
