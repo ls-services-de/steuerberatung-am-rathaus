@@ -1,6 +1,6 @@
 "use server"
 
-import { client, generateUniqueKey, generatePassword, generateCustomerNumber, parseFormText } from "./sanity"
+import { client, generateUniqueKey, generatePassword, generateCustomerNumber, parseFormText } from "./lib"
 import { revalidatePath } from "next/cache"
 
 // Authentication
