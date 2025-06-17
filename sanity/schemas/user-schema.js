@@ -41,7 +41,7 @@ export const userSchema = {
         type: "array",
         of: [
           {
-            type: "file",
+            type: "string",
             
           },
         ],
