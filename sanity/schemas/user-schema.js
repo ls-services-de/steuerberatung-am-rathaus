@@ -33,7 +33,7 @@ export const userSchema = {
         name: "assignedForms",
         title: "Zugewiesene Formulare",
         type: "array",
-        of: [{ type: "reference", to: [{ type: "form" }] }],
+        of: [{ type: "string"}],
       },
       {
         name: "ausgefuellteformulare",
@@ -41,7 +41,7 @@ export const userSchema = {
         type: "array",
         of: [
           {
-            type: "string",
+            type: "file",
             
           },
         ],
