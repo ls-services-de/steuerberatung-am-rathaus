@@ -21,10 +21,9 @@ import {
   createCategory,
   assignCustomerToCategory,
   removeCustomerFromCategory,
+  generatePassword,
 } from "@/sanity/lib"
 import { PREDEFINED_FORMS } from "@/sanity/predefined-forms"
-
-
 
 export default function AdminDashboard({ onLogout }) {
   const [activeTab, setActiveTab] = useState("customers")
@@ -102,7 +101,6 @@ export default function AdminDashboard({ onLogout }) {
     try {
       const notificationsData = await getNotifications()
       setNotifications(notificationsData || [])
-      setLastNotificationFetch(Date.now())
     } catch (error) {
       console.error("Error fetching notifications:", error)
     }
@@ -115,8 +113,15 @@ export default function AdminDashboard({ onLogout }) {
     setIsCreating(true)
 
     try {
-      await createCustomer(formData)
-      setSuccess("Kunde erfolgreich erstellt")
+      // Automatisch Passwort generieren
+      const generatedPassword = generatePassword()
+      const customerDataWithPassword = {
+        ...formData,
+        passwort: generatedPassword, // WICHTIG: passwort statt password verwenden
+      }
+
+      const result = await createCustomer(customerDataWithPassword)
+      setSuccess(`Kunde erfolgreich erstellt. Passwort: ${generatedPassword}`)
       setFormData({ firstName: "", lastName: "", email: "" })
       fetchData()
     } catch (error) {
@@ -269,7 +274,6 @@ export default function AdminDashboard({ onLogout }) {
     try {
       await markNotificationAsRead(notificationId)
       fetchNotifications()
-      setLastMarkAsRead(Date.now())
     } catch (error) {
       console.error("Error marking notification as read:", error)
     }
@@ -281,7 +285,6 @@ export default function AdminDashboard({ onLogout }) {
       if (result.success) {
         setSuccess(result.message)
         fetchNotifications()
-        setLastMarkAsRead(Date.now())
       }
     } catch (error) {
       setError(`Fehler beim Markieren der Benachrichtigungen: ${error.message}`)
@@ -338,7 +341,7 @@ export default function AdminDashboard({ onLogout }) {
     if (customerFilter === "completed_forms")
       return customer.ausgefuellteformulare && customer.ausgefuellteformulare.length > 0
     if (selectedCategory) {
-      return customer.categories && customer.categories.some((cat) => cat._id === selectedCategory)
+      return customer.category && customer.category.some((cat) => cat._id === selectedCategory)
     }
     return true
   })
@@ -437,6 +440,9 @@ export default function AdminDashboard({ onLogout }) {
                 <h2 className="text-lg leading-6 font-medium text-white">
                   {currentCustomer ? "Kunde bearbeiten" : "Neuen Kunden erstellen"}
                 </h2>
+                <p className="mt-1 text-sm text-white">
+                  {!currentCustomer && "Das Passwort wird automatisch generiert und angezeigt."}
+                </p>
               </div>
               <div className="border-t border-gray-700 px-4 py-5 sm:px-6">
                 <form onSubmit={currentCustomer ? handleUpdateCustomer : handleCreateCustomer}>
@@ -595,12 +601,15 @@ export default function AdminDashboard({ onLogout }) {
                                 </button>
                               </div>
                             </div>
-                            <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 text-sm text-white">
+                            <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 text-sm text-white">
                               <div>
                                 <span className="font-medium">E-Mail:</span> {customer.email}
                               </div>
                               <div>
                                 <span className="font-medium">Kundennummer:</span> {customer.kundennummer}
+                              </div>
+                              <div>
+                                <span className="font-medium">Passwort:</span> {customer.passwort || "Nicht gesetzt"}
                               </div>
                               <div>
                                 <span className="font-medium">Zugewiesene Formulare:</span>{" "}
@@ -611,11 +620,11 @@ export default function AdminDashboard({ onLogout }) {
                                 {customer.ausgefuellteformulare ? customer.ausgefuellteformulare.length : 0}
                               </div>
                             </div>
-                            {customer.categories && customer.categories.length > 0 && (
+                            {customer.category && customer.category.length > 0 && (
                               <div className="mt-2">
                                 <span className="font-medium text-white">Kategorien:</span>
                                 <div className="flex flex-wrap gap-2 mt-1">
-                                  {customer.categories.map((category) => (
+                                  {customer.category.map((category) => (
                                     <span
                                       key={category._id}
                                       className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-[#E3DAC9] text-black"
@@ -643,6 +652,7 @@ export default function AdminDashboard({ onLogout }) {
           </div>
         )}
 
+        {/* Rest of the component remains the same... */}
         {/* Form Assignment Modal */}
         {showAssignForm && (
           <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
@@ -821,6 +831,7 @@ export default function AdminDashboard({ onLogout }) {
           </div>
         )}
 
+        {/* Rest of the tabs remain the same... */}
         {/* Appointments Tab */}
         {activeTab === "appointments" && (
           <div className="bg-[rgba(227,218,201,0.1)] shadow overflow-hidden sm:rounded-lg">
@@ -1135,8 +1146,7 @@ export default function AdminDashboard({ onLogout }) {
                   <ul className="divide-y divide-gray-700">
                     {categories.map((category) => {
                       const customersInCategory = customers.filter(
-                        (customer) =>
-                          customer.categories && customer.categories.some((cat) => cat._id === category._id),
+                        (customer) => customer.category && customer.category.some((cat) => cat._id === category._id),
                       )
                       return (
                         <li key={category._id} className="px-4 py-5 sm:px-6">

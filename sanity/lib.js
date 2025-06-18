@@ -90,70 +90,204 @@ export function parseFormText(formText) {
   }
 }
 
+// Customer management functions - WICHTIG: passwort statt password verwenden
+export async function getCustomers() {
+  return client.fetch(`
+    *[_type == "userForm"] | order(firstName asc) {
+      _id,
+      firstName,
+      lastName,
+      email,
+      kundennummer,
+      passwort,
+      isAdmin,
+      assignedForms,
+      ausgefuellteformulare,
+      uploadedFiles,
+      category[]-> {
+        _id,
+        name
+      }
+    }
+  `)
+}
+
+export async function createCustomer(customerData) {
+  try {
+    // Check if customer with email already exists
+    const existingCustomer = await client.fetch(`*[_type == "userForm" && email == $email][0]`, {
+      email: customerData.email,
+    })
+
+    if (existingCustomer) {
+      throw new Error("Ein Kunde mit dieser E-Mail-Adresse existiert bereits")
+    }
+
+    const newCustomer = {
+      _type: "userForm",
+      firstName: customerData.firstName,
+      lastName: customerData.lastName,
+      email: customerData.email,
+      passwort: customerData.passwort || generatePassword(), // WICHTIG: passwort verwenden
+      kundennummer: generateCustomerNumber(),
+      isAdmin: false,
+      assignedForms: [],
+      ausgefuellteformulare: [],
+      uploadedFiles: [],
+      category: [],
+    }
+
+    const result = await client.create(newCustomer)
+
+    // Create notification for admin
+    await createNotification({
+      title: "Neuer Kunde erstellt",
+      message: `Kunde ${customerData.firstName} ${customerData.lastName} wurde erstellt. Passwort: ${newCustomer.passwort}`,
+      type: "customer_created",
+      relatedDocumentId: result._id,
+      relatedDocumentType: "userForm",
+    })
+
+    return result
+  } catch (error) {
+    console.error("Error creating customer:", error)
+    throw error
+  }
+}
+
+export async function updateCustomer(customerId, customerData) {
+  try {
+    // Check if email is being changed and if it already exists
+    if (customerData.email) {
+      const existingCustomer = await client.fetch(
+        `*[_type == "userForm" && email == $email && _id != $customerId][0]`,
+        { email: customerData.email, customerId },
+      )
+
+      if (existingCustomer) {
+        throw new Error("Ein anderer Kunde mit dieser E-Mail-Adresse existiert bereits")
+      }
+    }
+
+    return await client.patch(customerId).set(customerData).commit()
+  } catch (error) {
+    console.error("Error updating customer:", error)
+    throw error
+  }
+}
+
+export async function deleteCustomer(customerId) {
+  try {
+    return await client.delete(customerId)
+  } catch (error) {
+    console.error("Error deleting customer:", error)
+    throw error
+  }
+}
+
 // Get user's assigned forms (now stored as text)
 export async function getUserAssignedForms(userId) {
-  const user = await client.fetch(
-    `*[_type == "userForm" && _id == $userId][0]{
-      assignedForms
-    }`,
-    { userId },
-  )
+  try {
+    const user = await client.fetch(
+      `*[_type == "userForm" && _id == $userId][0]{
+        assignedForms
+      }`,
+      { userId },
+    )
 
-  if (!user?.assignedForms || !Array.isArray(user.assignedForms)) {
+    if (!user?.assignedForms || !Array.isArray(user.assignedForms)) {
+      return []
+    }
+
+    // Parse each form text into structured form
+    return user.assignedForms
+      .map((formText, index) => {
+        const parsedForm = parseFormText(formText)
+        if (parsedForm) {
+          return {
+            _id: `form_${index}`,
+            ...parsedForm,
+          }
+        }
+        return null
+      })
+      .filter(Boolean)
+  } catch (error) {
+    console.error("Error fetching user forms:", error)
     return []
   }
-
-  // Parse each form text into structured form
-  return user.assignedForms
-    .map((formText, index) => {
-      const parsedForm = parseFormText(formText)
-      if (parsedForm) {
-        return {
-          _id: `form_${index}`,
-          ...parsedForm,
-        }
-      }
-      return null
-    })
-    .filter(Boolean)
 }
 
 export async function getCompletedForms(userId) {
-  return client.fetch(
-    `*[_type == "userForm" && _id == $userId][0]{
-      ausgefuellteformulare,
-      uploadedFiles
-    }`,
-    { userId },
-  )
+  try {
+    return await client.fetch(
+      `*[_type == "userForm" && _id == $userId][0]{
+        ausgefuellteformulare,
+        uploadedFiles
+      }`,
+      { userId },
+    )
+  } catch (error) {
+    console.error("Error fetching completed forms:", error)
+    return { ausgefuellteformulare: [], uploadedFiles: [] }
+  }
 }
 
-// Add form text to user
+// Add form text to user with duplicate check
 export async function assignFormTextToUser(userId, formText) {
-  return client.patch(userId).setIfMissing({ assignedForms: [] }).append("assignedForms", [formText]).commit()
+  try {
+    const user = await client.fetch(
+      `*[_type == "userForm" && _id == $userId][0]{
+        assignedForms
+      }`,
+      { userId },
+    )
+
+    // Check if form already assigned
+    if (user?.assignedForms?.includes(formText)) {
+      throw new Error("Dieses Formular ist bereits zugewiesen")
+    }
+
+    return await client.patch(userId).setIfMissing({ assignedForms: [] }).append("assignedForms", [formText]).commit()
+  } catch (error) {
+    console.error("Error assigning form:", error)
+    throw error
+  }
 }
 
 // Remove form text from user
 export async function removeFormTextFromUser(userId, formIndex) {
-  const user = await client.fetch(
-    `*[_type == "userForm" && _id == $userId][0]{
-      assignedForms
-    }`,
-    { userId },
-  )
+  try {
+    const user = await client.fetch(
+      `*[_type == "userForm" && _id == $userId][0]{
+        assignedForms
+      }`,
+      { userId },
+    )
 
-  if (!user?.assignedForms) return
+    if (!user?.assignedForms) {
+      throw new Error("Keine Formulare gefunden")
+    }
 
-  const updatedForms = user.assignedForms.filter((_, index) => index !== formIndex)
+    const updatedForms = user.assignedForms.filter((_, index) => index !== formIndex)
 
-  return client.patch(userId).set({ assignedForms: updatedForms }).commit()
+    return await client.patch(userId).set({ assignedForms: updatedForms }).commit()
+  } catch (error) {
+    console.error("Error removing form:", error)
+    throw error
+  }
 }
 
-// File upload functions
+// File upload functions with better error handling
 export async function uploadFileToSanity(file) {
   try {
     if (!file) {
       throw new Error("Keine Datei zum Hochladen bereitgestellt")
+    }
+
+    // Check file size (max 10MB)
+    if (file.size > 10 * 1024 * 1024) {
+      throw new Error("Datei ist zu groß (max. 10MB)")
     }
 
     const arrayBuffer = await file.arrayBuffer()
@@ -195,21 +329,6 @@ export async function uploadFileAndAssignToUser(userId, file, questionIndex, for
 
     await client.patch(userId).setIfMissing({ uploadedFiles: [] }).append("uploadedFiles", [fileObject]).commit()
 
-    await client
-      .patch(userId)
-      .setIfMissing({ ausgefuellteformulare: [] })
-      .append("ausgefuellteformulare", [
-        {
-          _type: "file",
-          _key: generateUniqueKey(),
-          asset: {
-            _type: "reference",
-            _ref: uploadResult.fileId,
-          },
-        },
-      ])
-      .commit()
-
     return {
       ...uploadResult,
       key: fileObject._key,
@@ -240,12 +359,12 @@ export async function getUserUploadedFiles(userId) {
 
     return result?.uploadedFiles || []
   } catch (error) {
-    console.error("Fehler beim Abrufen der hochgeladenen Dateien:", error)
+    console.error("Error fetching uploaded files:", error)
     return []
   }
 }
 
-// PDF generation function
+// PDF generation function (keeping existing implementation)
 export async function generatePDF(form, answers, user, uploadedFileRefs = []) {
   const doc = new jsPDF({
     orientation: "portrait",
@@ -501,102 +620,133 @@ export async function removeFormAfterCompletion(userId, formIndex) {
 
 // Notification functions
 export async function createNotification({ title, message, type, relatedDocumentId, relatedDocumentType }) {
-  return client.create({
-    _type: "notification",
-    title,
-    message,
-    type,
-    read: false,
-    createdAt: new Date().toISOString(),
-    relatedDocumentId,
-    relatedDocumentType,
-  })
-}
-
-export async function getNotifications() {
-  return client.fetch(`
-    *[_type == "notification"] | order(createdAt desc) {
-      _id,
+  try {
+    return await client.create({
+      _type: "notification",
       title,
       message,
       type,
-      read,
-      createdAt,
+      read: false,
+      createdAt: new Date().toISOString(),
       relatedDocumentId,
-      relatedDocumentType
-    }
-  `)
+      relatedDocumentType,
+    })
+  } catch (error) {
+    console.error("Error creating notification:", error)
+    throw error
+  }
+}
+
+export async function getNotifications() {
+  try {
+    return await client.fetch(`
+      *[_type == "notification"] | order(createdAt desc) {
+        _id,
+        title,
+        message,
+        type,
+        read,
+        createdAt,
+        relatedDocumentId,
+        relatedDocumentType
+      }
+    `)
+  } catch (error) {
+    console.error("Error fetching notifications:", error)
+    return []
+  }
 }
 
 export async function markNotificationAsRead(id) {
-  return client.patch(id).set({ read: true }).commit()
+  try {
+    return await client.patch(id).set({ read: true }).commit()
+  } catch (error) {
+    console.error("Error marking notification as read:", error)
+    throw error
+  }
 }
 
 export async function markAllNotificationsAsRead() {
-  const unreadNotifications = await client.fetch(`
-    *[_type == "notification" && read == false]._id
-  `)
+  try {
+    const unreadNotifications = await client.fetch(`
+      *[_type == "notification" && read == false]._id
+    `)
 
-  if (unreadNotifications.length === 0) {
-    return { success: true, message: "Keine ungelesenen Benachrichtigungen vorhanden" }
-  }
+    if (unreadNotifications.length === 0) {
+      return { success: true, message: "Keine ungelesenen Benachrichtigungen vorhanden" }
+    }
 
-  const transactions = unreadNotifications.map((id) => client.patch(id).set({ read: true }))
-  await Promise.all(transactions.map((tx) => tx.commit()))
+    const transactions = unreadNotifications.map((id) => client.patch(id).set({ read: true }))
+    await Promise.all(transactions.map((tx) => tx.commit()))
 
-  return {
-    success: true,
-    message: `${unreadNotifications.length} Benachrichtigungen als gelesen markiert`,
+    return {
+      success: true,
+      message: `${unreadNotifications.length} Benachrichtigungen als gelesen markiert`,
+    }
+  } catch (error) {
+    console.error("Error marking all notifications as read:", error)
+    throw error
   }
 }
 
 // Contact inquiry functions
 export async function getContactInquiries() {
-  return client.fetch(`
-    *[_type == "contactForm"] | order(timestamp desc) {
-      _id,
-      firstName,
-      lastName,
-      email,
-      phone,
-      subject,
-      message,
-      supportNumber,
-      status,
-      timestamp,
-      "fileUrl": file.asset->url
-    }
-  `)
+  try {
+    return await client.fetch(`
+      *[_type == "contactForm"] | order(timestamp desc) {
+        _id,
+        firstName,
+        lastName,
+        email,
+        phone,
+        subject,
+        message,
+        supportNumber,
+        status,
+        timestamp,
+        "fileUrl": file.asset->url
+      }
+    `)
+  } catch (error) {
+    console.error("Error fetching contact inquiries:", error)
+    return []
+  }
 }
 
 export async function updateContactInquiryStatus(id, status) {
-  const result = await client.patch(id).set({ status }).commit()
+  try {
+    const result = await client.patch(id).set({ status }).commit()
 
-  const inquiry = await client.fetch(
-    `*[_type == "contactForm" && _id == $id][0] {
-      _id,
-      firstName,
-      lastName,
-      supportNumber
-    }`,
-    { id },
-  )
+    const inquiry = await client.fetch(
+      `*[_type == "contactForm" && _id == $id][0] {
+        _id,
+        firstName,
+        lastName,
+        supportNumber
+      }`,
+      { id },
+    )
 
-  if (inquiry) {
-    await createNotification({
-      title: `Kontaktanfrage Status: ${status}`,
-      message: `Status der Anfrage ${inquiry.supportNumber} wurde auf "${status}" geändert.`,
-      type: "contact_inquiry",
-      relatedDocumentId: id,
-      relatedDocumentType: "contactForm",
-    })
+    if (inquiry) {
+      await createNotification({
+        title: `Kontaktanfrage Status: ${status}`,
+        message: `Status der Anfrage ${inquiry.supportNumber} wurde auf "${status}" geändert.`,
+        type: "contact_inquiry",
+        relatedDocumentId: id,
+        relatedDocumentType: "contactForm",
+      })
+    }
+
+    return result
+  } catch (error) {
+    console.error("Error updating inquiry status:", error)
+    throw error
   }
-
-  return result
 }
 
 export async function getAppointments() {
-  return client.fetch(`*[_type == "appointment"] | order(uhrzeit desc) {
+  try {
+    return await client.fetch(`*[_type == "appointment"] | order(uhrzeit desc) {
     _id,
     name,
     phone,
@@ -604,6 +754,10 @@ export async function getAppointments() {
     uhrzeit,
     link
   }`)
+  } catch (error) {
+    console.error("Error fetching appointments:", error)
+    return []
+  }
 }
 
 // Categories
@@ -637,19 +791,19 @@ export async function assignCustomerToCategory(customerId, categoryId) {
   try {
     const customer = await client.fetch(
       `*[_type == "userForm" && _id == $customerId][0]{
-        categories
+        category
       }`,
       { customerId },
     )
 
-    if (customer.categories && customer.categories.some((cat) => cat._ref === categoryId)) {
+    if (customer.category && customer.category.some((cat) => cat._ref === categoryId)) {
       return { alreadyAssigned: true }
     }
 
     return client
       .patch(customerId)
-      .setIfMissing({ categories: [] })
-      .append("categories", [{ _type: "reference", _ref: categoryId, _key: generateUniqueKey() }])
+      .setIfMissing({ category: [] })
+      .append("category", [{ _type: "reference", _ref: categoryId, _key: generateUniqueKey() }])
       .commit()
   } catch (error) {
     console.error("Fehler beim Zuweisen der Kategorie:", error)
@@ -661,68 +815,20 @@ export async function removeCustomerFromCategory(customerId, categoryId) {
   try {
     const customer = await client.fetch(
       `*[_type == "userForm" && _id == $customerId][0]{
-        categories
+        category
       }`,
       { customerId },
     )
 
-    if (!customer.categories) {
+    if (!customer.category) {
       return { notAssigned: true }
     }
 
-    const updatedCategories = customer.categories.filter((cat) => cat._ref !== categoryId)
+    const updatedCategories = customer.category.filter((cat) => cat._ref !== categoryId)
 
-    return client.patch(customerId).set({ categories: updatedCategories }).commit()
+    return client.patch(customerId).set({ category: updatedCategories }).commit()
   } catch (error) {
     console.error("Fehler beim Entfernen aus der Kategorie:", error)
     throw new Error(`Fehler beim Entfernen aus der Kategorie: ${error.message}`)
   }
-}
-
-// Customer management functions
-export async function getCustomers() {
-  return client.fetch(`
-    *[_type == "userForm"] | order(firstName asc) {
-      _id,
-      firstName,
-      lastName,
-      email,
-      kundennummer,
-      password,
-      isAdmin,
-      assignedForms,
-      ausgefuellteformulare,
-      uploadedFiles,
-      categories[]-> {
-        _id,
-        name
-      }
-    }
-  `)
-}
-
-export async function createCustomer(customerData) {
-  const newCustomer = {
-    _type: "userForm",
-    firstName: customerData.firstName,
-    lastName: customerData.lastName,
-    email: customerData.email,
-    password: customerData.password || generatePassword(),
-    kundennummer: generateCustomerNumber(),
-    isAdmin: false,
-    assignedForms: [],
-    ausgefuellteformulare: [],
-    uploadedFiles: [],
-    categories: [],
-  }
-
-  return client.create(newCustomer)
-}
-
-export async function updateCustomer(customerId, customerData) {
-  return client.patch(customerId).set(customerData).commit()
-}
-
-export async function deleteCustomer(customerId) {
-  return client.delete(customerId)
 }

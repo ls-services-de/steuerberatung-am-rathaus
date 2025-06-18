@@ -46,5 +46,16 @@ export const userSchema = {
           },
         ],
       },
+      {
+        name: "category",
+        title: "Kategorie",
+        type: "array",
+        of: [
+          {
+            type: "reference", to: [{type: "category"}],
+            
+          },
+        ],
+      },
     ],
   }
