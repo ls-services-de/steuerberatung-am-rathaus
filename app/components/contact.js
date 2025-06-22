@@ -3,7 +3,8 @@
 import { useState, useEffect } from "react"
 import { Phone, Mail, Calendar, Search, X, AlertTriangle } from "lucide-react"
 import sanityClient from "@sanity/client"
-import { createContactInquiryNotification } from "@/sanity/lib"
+import { createNotification } from "@/sanity/lib"
+import emailjs from "@emailjs/browser"
 
 // Initialize Sanity client
 const client = sanityClient({
@@ -15,7 +16,7 @@ const client = sanityClient({
 })
 
 export default function ContactForm() {
-  const [showChat, setShowChat] = useState(false) // State to toggle the iframe
+  const [showChat, setShowChat] = useState(false)
 
   const toggleChat = () => {
     setShowChat(!showChat)
@@ -46,10 +47,30 @@ export default function ContactForm() {
   const [showConfirmDelete, setShowConfirmDelete] = useState(false)
   const [deleteSuccess, setDeleteSuccess] = useState("")
 
+  // E-Mail Konfiguration - gleiche IDs wie im Admin-Dashboard
+  const [emailConfig] = useState({
+    serviceId: "service_z0bgw1a",
+    templateId: "template_y69qige", // Hier können Sie eine separate Template-ID für Kontaktanfragen verwenden
+    publicKey: "rTyLRMB6bVblKmGW1",
+  })
+  const [emailConfigured, setEmailConfigured] = useState(false)
+
   // Generate a unique support number on component mount
   useEffect(() => {
     const uniqueSupportNumber = `S_${Math.floor(1000000000 + Math.random() * 9000000000)}`
     setSupportNumber(uniqueSupportNumber)
+    
+    // EmailJS initialisieren
+    const savedConfig = localStorage.getItem("emailjs-config")
+    if (savedConfig) {
+      const config = JSON.parse(savedConfig)
+      setEmailConfigured(true)
+      emailjs.init(config.publicKey)
+    } else {
+      // Fallback zu den Standard-Konfigurationen
+      setEmailConfigured(true)
+      emailjs.init(emailConfig.publicKey)
+    }
   }, [])
 
   const handleChange = (e) => {
@@ -76,10 +97,182 @@ export default function ContactForm() {
     })
   }
 
+  // HTML E-Mail Template für Kontaktanfragen
+  const generateContactEmailHTML = (inquiry) => {
+    const formatDate = (dateString) => {
+      const date = new Date(dateString)
+      return date.toLocaleDateString("de-DE", {
+        day: "2-digit",
+        month: "2-digit",
+        year: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+      })
+    }
+
+    return `
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+  <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Bestätigung Ihrer Kontaktanfrage</title>
+</head>
+<body style="margin: 0; padding: 0; font-family: Arial, Helvetica, sans-serif; background-color: #f5f5f5; color: #333333;">
+  <table border="0" cellpadding="0" cellspacing="0" width="100%" style="border-collapse: collapse;">
+    <tr>
+      <td>
+        <!-- Header -->
+        <table border="0" cellpadding="0" cellspacing="0" width="100%" style="background-color: #E3DAC9; padding: 20px 0;">
+          <tr>
+            <td align="center">
+              <table border="0" cellpadding="0" cellspacing="0" width="600" style="border-collapse: collapse;">
+                <tr>
+                  <td align="left" style="padding: 0 20px;">
+                    <h1 style="color: #333333; font-size: 24px; margin: 0;">Steuerberatung am Rathaus</h1>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+        </table>
+
+        <!-- Content -->
+        <table border="0" cellpadding="0" cellspacing="0" width="100%">
+          <tr>
+            <td align="center" style="padding: 40px 0;">
+              <table border="0" cellpadding="0" cellspacing="0" width="600" style="background-color: #ffffff; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1);">
+                <tr>
+                  <td style="padding: 40px 30px;">
+                    <h2 style="color: #333333; font-size: 20px; margin: 0 0 20px 0;">Vielen Dank für Ihre Anfrage</h2>
+                    <p style="color: #555555; font-size: 16px; line-height: 1.5; margin: 0 0 20px 0;">Sehr geehrte(r) ${inquiry.firstName} ${inquiry.lastName},</p>
+                    <p style="color: #555555; font-size: 16px; line-height: 1.5; margin: 0 0 20px 0;">wir haben Ihre Kontaktanfrage erhalten und werden uns schnellstmöglich mit Ihnen in Verbindung setzen.</p>
+                    
+                    <table border="0" cellpadding="0" cellspacing="0" width="100%" style="background-color: #f9f7f3; border-radius: 6px; margin: 30px 0;">
+                      <tr>
+                        <td style="padding: 20px;">
+                          <h3 style="color: #333333; font-size: 18px; margin: 0 0 15px 0;">Ihre Anfrage-Details:</h3>
+                          <table border="0" cellpadding="0" cellspacing="0" width="100%">
+                            <tr>
+                              <td width="150" style="color: #747171; font-size: 14px; padding: 5px 0;">Support-Nummer:</td>
+                              <td style="color: #333333; font-size: 14px; font-weight: bold; padding: 5px 0;">${inquiry.supportNumber}</td>
+                            </tr>
+                            <tr>
+                              <td width="150" style="color: #747171; font-size: 14px; padding: 5px 0;">Datum:</td>
+                              <td style="color: #333333; font-size: 14px; padding: 5px 0;">${formatDate(inquiry.timestamp)}</td>
+                            </tr>
+                            <tr>
+                              <td width="150" style="color: #747171; font-size: 14px; padding: 5px 0;">Betreff:</td>
+                              <td style="color: #333333; font-size: 14px; padding: 5px 0;">${inquiry.subject}</td>
+                            </tr>
+                            <tr>
+                              <td width="150" style="color: #747171; font-size: 14px; padding: 5px 0; vertical-align: top;">Nachricht:</td>
+                              <td style="color: #333333; font-size: 14px; padding: 5px 0;">${inquiry.message}</td>
+                            </tr>
+                            <tr>
+                              <td width="150" style="color: #747171; font-size: 14px; padding: 5px 0; vertical-align: top;">Status:</td>
+                              <td style="color: #333333; font-size: 14px; padding: 5px 0;">${inquiry.status}</td>
+                            </tr>
+                          </table>
+                        </td>
+                      </tr>
+                    </table>
+                    
+                    <p style="color: #555555; font-size: 16px; line-height: 1.5; margin: 0 0 20px 0;">Bitte bewahren Sie Ihre Support-Nummer auf. Mit dieser können Sie jederzeit den Status Ihrer Anfrage auf unserer Website überprüfen.</p>
+                    
+                    <table border="0" cellpadding="0" cellspacing="0">
+                      <tr>
+                        <td style="background-color: #E3DAC9; border-radius: 4px;">
+                          <a href="https://steuerberatung-am-rathaus.vercel.app/#kontakt" target="_blank" style="display: inline-block; padding: 12px 24px; color: #333333; font-size: 16px; font-weight: bold; text-decoration: none;">Status prüfen</a>
+                        </td>
+                      </tr>
+                    </table>
+                    
+                    <p style="color: #555555; font-size: 16px; line-height: 1.5; margin: 30px 0 0 0;">Mit freundlichen Grüßen,</p>
+                    <p style="color: #555555; font-size: 16px; line-height: 1.5; margin: 0;">Ihr Team der Steuerberatung am Rathaus</p>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+        </table>
+
+        <!-- Footer -->
+        <table border="0" cellpadding="0" cellspacing="0" width="100%" style="background-color: #747171; padding: 30px 0;">
+          <tr>
+            <td align="center">
+              <table border="0" cellpadding="0" cellspacing="0" width="600" style="border-collapse: collapse;">
+                <tr>
+                  <td align="center" style="color: #ffffff; font-size: 14px; padding: 0 20px;">
+                    <p style="margin: 0 0 10px 0;">Steuerberatung am Rathaus</p>
+                    <p style="margin: 0 0 10px 0;">Kirchhellener Str. 42, 46236 Bottrop</p>
+                    <p style="margin: 0 0 10px 0;">Tel: +49 020414066389 | E-Mail: stb-am-rathaus@email.de</p>
+                    <p style="margin: 20px 0 0 0; font-size: 12px; color: #E3DAC9;">© 2025 Steuerberatung am Rathaus und Liam Schneider. Alle Rechte vorbehalten.</p>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>
+    `
+  }
+
+  // E-Mail senden Funktion
+  const sendContactConfirmationEmail = async (inquiry) => {
+    if (!emailConfigured) {
+      console.warn("E-Mail-Service ist nicht konfiguriert")
+      return
+    }
+
+    try {
+      // Konfiguration aus localStorage laden oder Fallback verwenden
+      const savedConfig = localStorage.getItem("emailjs-config")
+      const config = savedConfig ? JSON.parse(savedConfig) : emailConfig
+
+      const emailHTML = generateContactEmailHTML(inquiry)
+
+      // Template Parameter für EmailJS
+      const templateParams = {
+        to_email: inquiry.email,
+        to_name: `${inquiry.firstName} ${inquiry.lastName}`,
+        from_name: "Steuerberatung am Rathaus",
+        subject: "Bestätigung Ihrer Kontaktanfrage - Steuerberatung am Rathaus",
+        html_content: emailHTML,
+        // Zusätzliche Parameter für den Fall, dass das Template diese direkt verwendet
+        customer_firstname: inquiry.firstName,
+        customer_lastname: inquiry.lastName,
+        customer_email: inquiry.email,
+        support_number: inquiry.supportNumber,
+        inquiry_subject: inquiry.subject,
+        inquiry_message: inquiry.message,
+        inquiry_status: inquiry.status,
+        inquiry_date: new Date(inquiry.timestamp).toLocaleDateString("de-DE", {
+          day: "2-digit",
+          month: "2-digit",
+          year: "numeric",
+          hour: "2-digit",
+          minute: "2-digit",
+        }),
+      }
+
+      await emailjs.send(config.serviceId, config.templateId, templateParams, config.publicKey)
+
+      console.log(`Bestätigungs-E-Mail erfolgreich an ${inquiry.email} gesendet`)
+    } catch (error) {
+      console.error("Fehler beim Senden der Bestätigungs-E-Mail:", error)
+      // Fehler wird nicht an den Benutzer weitergegeben, da die Hauptfunktion (Anfrage speichern) erfolgreich war
+    }
+  }
+
   const handleSubmit = async (e) => {
     e.preventDefault()
 
-    // Check if required fields are filled
+    // Check if required fields are filled  
     if (!formData.firstName || !formData.lastName || !formData.email || !formData.message) {
       setError("Bitte füllen Sie alle Pflichtfelder aus.")
       setSuccess("")
@@ -106,7 +299,7 @@ export default function ContactForm() {
         subject: formData.subject,
         message: formData.message,
         supportNumber: supportNumber,
-        status: "Offen", // Ensure status is capitalized to match the schema
+        status: "Offen",
         timestamp: new Date().toISOString(),
       }
 
@@ -119,10 +312,16 @@ export default function ContactForm() {
       const createdInquiry = await client.create(submissionData)
 
       // Create notification for the new contact inquiry
-      await createContactInquiryNotification(createdInquiry)
+      await createNotification(createdInquiry)
+
+      // Send confirmation email
+      await sendContactConfirmationEmail({
+        ...submissionData,
+        _id: createdInquiry._id,
+      })
 
       // Show success message and support number
-      setSuccess(`Ihre Nachricht wurde erfolgreich versendet. Ihre Support-Nummer: ${supportNumber}`)
+      setSuccess(`Ihre Nachricht wurde erfolgreich versendet. Ihre Support-Nummer: ${supportNumber}. Eine Bestätigungs-E-Mail wurde an ${formData.email} gesendet.`)
       setError("")
 
       // Reset form

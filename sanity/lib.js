@@ -1,6 +1,7 @@
 import { createClient } from "@sanity/client"
 import { jsPDF } from "jspdf"
 import "jspdf-autotable"
+// import { sendCustomerWelcomeEmail } from "@/lib/email"
 
 // Initialize Sanity client
 export const client = createClient({
@@ -138,6 +139,15 @@ export async function createCustomer(customerData) {
     }
 
     const result = await client.create(newCustomer)
+
+    // E-Mail an neuen Kunden senden
+    // try {
+    //   await sendCustomerWelcomeEmail(result)
+    //   console.log('Willkommens-E-Mail erfolgreich gesendet')
+    // } catch (emailError) {
+    //   console.error('Fehler beim Senden der Willkommens-E-Mail:', emailError)
+    //   // E-Mail-Fehler nicht weiterwerfen, da Kunde bereits erstellt wurde
+    // }
 
     // Create notification for admin
     await createNotification({
