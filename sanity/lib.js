@@ -375,199 +375,239 @@ export async function getUserUploadedFiles(userId) {
 }
 
 // PDF generation function (keeping existing implementation)
-export async function generatePDF(form, answers, user, uploadedFileRefs = []) {
-  const doc = new jsPDF({
-    orientation: "portrait",
-    unit: "mm",
-    format: "a4",
-  })
+// export async function generatePDF(form, answers, user, uploadedFileRefs = []) {
+//   const doc = new jsPDF({
+//     orientation: "portrait",
+//     unit: "mm",
+//     format: "a4",
+//   })
 
-  const primaryColor = [227 / 255, 218 / 255, 201 / 255]
-  const textColor = [50 / 255, 50 / 255, 50 / 255]
-  const accentColor = [180 / 255, 170 / 255, 150 / 255]
+//   const primaryColor = [227 / 255, 218 / 255, 201 / 255]
+//   const textColor = [50 / 255, 50 / 255, 50 / 255]
+//   const accentColor = [180 / 255, 170 / 255, 150 / 255]
 
-  // Header
-  doc.setFillColor(...primaryColor)
-  doc.rect(0, 0, 210, 30, "F")
+//   // Header
+//   doc.setFillColor(...primaryColor)
+//   doc.rect(0, 0, 210, 30, "F")
 
-  doc.setTextColor(255, 255, 255)
-  doc.setFontSize(22)
-  doc.setFont("helvetica", "bold")
-  doc.text("Formular-Dokumentation", 105, 15, { align: "center" })
+//   doc.setTextColor(255, 255, 255)
+//   doc.setFontSize(22)
+//   doc.setFont("helvetica", "bold")
+//   doc.text("Formular-Dokumentation", 105, 15, { align: "center" })
 
-  doc.setTextColor(...textColor)
-  doc.setFontSize(10)
-  doc.setFont("helvetica", "normal")
-  doc.text(`Datum: ${new Date().toLocaleDateString("de-DE")}`, 20, 40)
-  doc.text(`Formular-ID: ${form._id}`, 20, 45)
+//   doc.setTextColor(...textColor)
+//   doc.setFontSize(10)
+//   doc.setFont("helvetica", "normal")
+//   doc.text(`Datum: ${new Date().toLocaleDateString("de-DE")}`, 20, 40)
+//   doc.text(`Formular-ID: ${form._id}`, 20, 45)
 
-  // User information
-  doc.setFillColor(...accentColor)
-  doc.rect(0, 50, 210, 20, "F")
+//   // User information
+//   doc.setFillColor(...accentColor)
+//   doc.rect(0, 50, 210, 20, "F")
 
-  doc.setTextColor(255, 255, 255)
-  doc.setFontSize(14)
-  doc.setFont("helvetica", "bold")
-  doc.text("Kundeninformationen", 105, 62, { align: "center" })
+//   doc.setTextColor(255, 255, 255)
+//   doc.setFontSize(14)
+//   doc.setFont("helvetica", "bold")
+//   doc.text("Kundeninformationen", 105, 62, { align: "center" })
 
-  doc.setTextColor(...textColor)
-  doc.setFontSize(12)
-  doc.setFont("helvetica", "normal")
-  doc.text(`Name: ${user.firstName} ${user.lastName}`, 20, 80)
-  doc.text(`Kundennummer: ${user.kundennummer || "Nicht angegeben"}`, 20, 87)
-  doc.text(`E-Mail: ${user.email || "Nicht angegeben"}`, 20, 94)
+//   doc.setTextColor(...textColor)
+//   doc.setFontSize(12)
+//   doc.setFont("helvetica", "normal")
+//   doc.text(`Name: ${user.firstName} ${user.lastName}`, 20, 80)
+//   doc.text(`Kundennummer: ${user.kundennummer || "Nicht angegeben"}`, 20, 87)
+//   doc.text(`E-Mail: ${user.email || "Nicht angegeben"}`, 20, 94)
 
-  // Form title
-  doc.setFillColor(...primaryColor)
-  doc.rect(0, 105, 210, 15, "F")
+//   // Form title
+//   doc.setFillColor(...primaryColor)
+//   doc.rect(0, 105, 210, 15, "F")
 
-  doc.setTextColor(255, 255, 255)
-  doc.setFontSize(14)
-  doc.setFont("helvetica", "bold")
-  doc.text(`Formular: ${form.title || "Ohne Titel"}`, 105, 114, { align: "center" })
+//   doc.setTextColor(255, 255, 255)
+//   doc.setFontSize(14)
+//   doc.setFont("helvetica", "bold")
+//   doc.text(`Formular: ${form.title || "Ohne Titel"}`, 105, 114, { align: "center" })
 
-  // Form answers
-  doc.setTextColor(...textColor)
-  doc.setFontSize(12)
-  doc.setFont("helvetica", "bold")
-  doc.text("Antworten:", 20, 130)
+//   // Form answers
+//   doc.setTextColor(...textColor)
+//   doc.setFontSize(12)
+//   doc.setFont("helvetica", "bold")
+//   doc.text("Antworten:", 20, 130)
 
-  let yPosition = 140
+//   let yPosition = 140
 
-  if (form.questions && form.questions.length > 0) {
-    for (let index = 0; index < form.questions.length; index++) {
-      const question = form.questions[index]
+//   if (form.questions && form.questions.length > 0) {
+//     for (let index = 0; index < form.questions.length; index++) {
+//       const question = form.questions[index]
 
-      if (yPosition > 250) {
-        doc.addPage()
-        yPosition = 20
+//       if (yPosition > 250) {
+//         doc.addPage()
+//         yPosition = 20
 
-        doc.setFillColor(...primaryColor)
-        doc.rect(0, 0, 210, 15, "F")
-        doc.setTextColor(255, 255, 255)
-        doc.setFontSize(14)
-        doc.setFont("helvetica", "bold")
-        doc.text("Formular-Dokumentation (Fortsetzung)", 105, 10, { align: "center" })
+//         doc.setFillColor(...primaryColor)
+//         doc.rect(0, 0, 210, 15, "F")
+//         doc.setTextColor(255, 255, 255)
+//         doc.setFontSize(14)
+//         doc.setFont("helvetica", "bold")
+//         doc.text("Formular-Dokumentation (Fortsetzung)", 105, 10, { align: "center" })
 
-        doc.setTextColor(...textColor)
-        doc.setFontSize(12)
-        doc.setFont("helvetica", "bold")
-        doc.text("Antworten (Fortsetzung):", 20, yPosition)
-        yPosition += 10
-      }
+//         doc.setTextColor(...textColor)
+//         doc.setFontSize(12)
+//         doc.setFont("helvetica", "bold")
+//         doc.text("Antworten (Fortsetzung):", 20, yPosition)
+//         yPosition += 10
+//       }
 
-      doc.setFont("helvetica", "bold")
-      doc.text(`Frage ${index + 1}: ${question.questionText}`, 20, yPosition)
-      yPosition += 7
+//       doc.setFont("helvetica", "bold")
+//       doc.text(`Frage ${index + 1}: ${question.questionText}`, 20, yPosition)
+//       yPosition += 7
 
-      doc.setFont("helvetica", "normal")
-      const answerKey = `question_${index}`
-      const fileKey = `file_${index}`
-      let answerText = "Keine Antwort"
+//       doc.setFont("helvetica", "normal")
+//       const answerKey = `question_${index}`
+//       const fileKey = `file_${index}`
+//       let answerText = "Keine Antwort"
 
-      if (question.questionType === "fileUpload" && answers[fileKey]) {
-        const fileInfo = answers[fileKey]
-        answerText = `Datei hochgeladen: ${fileInfo.fileName || "Datei"}`
-        doc.text(`Antwort: ${answerText}`, 25, yPosition)
-        yPosition += 7
+//       if (question.questionType === "fileUpload" && answers[fileKey]) {
+//         const fileInfo = answers[fileKey]
+//         answerText = `Datei hochgeladen: ${fileInfo.fileName || "Datei"}`
+//         doc.text(`Antwort: ${answerText}`, 25, yPosition)
+//         yPosition += 7
 
-        const fileRef = uploadedFileRefs.find((ref) => ref.questionIndex === index)
-        if (fileRef && fileRef.url) {
-          doc.setTextColor(0, 0, 255)
-          doc.text(`Link zur Datei: ${fileRef.url}`, 25, yPosition)
-          doc.setTextColor(...textColor)
-        } else {
-          doc.text("(Datei wurde separat hochgeladen)", 25, yPosition)
-        }
-        yPosition += 10
-      } else if (answers[answerKey] !== undefined) {
-        if (Array.isArray(answers[answerKey])) {
-          if (answers[answerKey].length === 0) {
-            answerText = "Keine Option ausgewählt"
-          } else {
-            answerText = answers[answerKey].join(", ")
-          }
-        } else {
-          answerText = answers[answerKey].toString()
-        }
-        doc.text(`Antwort: ${answerText}`, 25, yPosition)
-        yPosition += 10
-      } else {
-        doc.text(`Antwort: ${answerText}`, 25, yPosition)
-        yPosition += 10
-      }
+//         const fileRef = uploadedFileRefs.find((ref) => ref.questionIndex === index)
+//         if (fileRef && fileRef.url) {
+//           doc.setTextColor(0, 0, 255)
+//           doc.text(`Link zur Datei: ${fileRef.url}`, 25, yPosition)
+//           doc.setTextColor(...textColor)
+//         } else {
+//           doc.text("(Datei wurde separat hochgeladen)", 25, yPosition)
+//         }
+//         yPosition += 10
+//       } else if (answers[answerKey] !== undefined) {
+//         if (Array.isArray(answers[answerKey])) {
+//           if (answers[answerKey].length === 0) {
+//             answerText = "Keine Option ausgewählt"
+//           } else {
+//             answerText = answers[answerKey].join(", ")
+//           }
+//         } else {
+//           answerText = answers[answerKey].toString()
+//         }
+//         doc.text(`Antwort: ${answerText}`, 25, yPosition)
+//         yPosition += 10
+//       } else {
+//         doc.text(`Antwort: ${answerText}`, 25, yPosition)
+//         yPosition += 10
+//       }
 
-      doc.setDrawColor(...accentColor)
-      doc.line(20, yPosition, 190, yPosition)
-      yPosition += 7
-    }
-  }
+//       doc.setDrawColor(...accentColor)
+//       doc.line(20, yPosition, 190, yPosition)
+//       yPosition += 7
+//     }
+//   }
 
-  // Uploaded files section
-  if (uploadedFileRefs && uploadedFileRefs.length > 0) {
-    if (yPosition > 220) {
-      doc.addPage()
-      yPosition = 20
+//   // Uploaded files section
+//   if (uploadedFileRefs && uploadedFileRefs.length > 0) {
+//     if (yPosition > 220) {
+//       doc.addPage()
+//       yPosition = 20
 
-      doc.setFillColor(...primaryColor)
-      doc.rect(0, 0, 210, 15, "F")
-      doc.setTextColor(255, 255, 255)
-      doc.setFontSize(14)
-      doc.setFont("helvetica", "bold")
-      doc.text("Formular-Dokumentation (Fortsetzung)", 105, 10, { align: "center" })
-      yPosition += 15
-    }
+//       doc.setFillColor(...primaryColor)
+//       doc.rect(0, 0, 210, 15, "F")
+//       doc.setTextColor(255, 255, 255)
+//       doc.setFontSize(14)
+//       doc.setFont("helvetica", "bold")
+//       doc.text("Formular-Dokumentation (Fortsetzung)", 105, 10, { align: "center" })
+//       yPosition += 15
+//     }
 
-    doc.setTextColor(...textColor)
-    doc.setFontSize(12)
-    doc.setFont("helvetica", "bold")
-    doc.text("Hochgeladene Dateien:", 20, yPosition)
-    yPosition += 10
+//     doc.setTextColor(...textColor)
+//     doc.setFontSize(12)
+//     doc.setFont("helvetica", "bold")
+//     doc.text("Hochgeladene Dateien:", 20, yPosition)
+//     yPosition += 10
 
-    doc.setFont("helvetica", "normal")
-    for (const file of uploadedFileRefs) {
-      const fileInfo = `${file.fileName || "Datei"} (${file.fileType || "Unbekannter Typ"})`
-      doc.text(`• ${fileInfo}`, 25, yPosition)
-      yPosition += 7
+//     doc.setFont("helvetica", "normal")
+//     for (const file of uploadedFileRefs) {
+//       const fileInfo = `${file.fileName || "Datei"} (${file.fileType || "Unbekannter Typ"})`
+//       doc.text(`• ${fileInfo}`, 25, yPosition)
+//       yPosition += 7
 
-      if (file.url) {
-        doc.setTextColor(0, 0, 255)
-        doc.text(`  Link: ${file.url}`, 25, yPosition)
-        doc.setTextColor(...textColor)
-        yPosition += 10
-      } else {
-        yPosition += 3
-      }
-    }
-  }
+//       if (file.url) {
+//         doc.setTextColor(0, 0, 255)
+//         doc.text(`  Link: ${file.url}`, 25, yPosition)
+//         doc.setTextColor(...textColor)
+//         yPosition += 10
+//       } else {
+//         yPosition += 3
+//       }
+//     }
+//   }
 
-  // Footer
-  const pageCount = doc.internal.getNumberOfPages()
-  for (let i = 1; i <= pageCount; i++) {
-    doc.setPage(i)
+//   // Footer
+//   const pageCount = doc.internal.getNumberOfPages()
+//   for (let i = 1; i <= pageCount; i++) {
+//     doc.setPage(i)
 
-    doc.setFillColor(...primaryColor)
-    doc.rect(0, 280, 210, 17, "F")
+//     doc.setFillColor(...primaryColor)
+//     doc.rect(0, 280, 210, 17, "F")
 
-    doc.setTextColor(255, 255, 255)
-    doc.setFontSize(10)
-    doc.setFont("helvetica", "normal")
-    doc.text(`Seite ${i} von ${pageCount}`, 105, 290, { align: "center" })
-    doc.text(`Erstellt am: ${new Date().toLocaleString("de-DE")}`, 20, 290)
-  }
+//     doc.setTextColor(255, 255, 255)
+//     doc.setFontSize(10)
+//     doc.setFont("helvetica", "normal")
+//     doc.text(`Seite ${i} von ${pageCount}`, 105, 290, { align: "center" })
+//     doc.text(`Erstellt am: ${new Date().toLocaleString("de-DE")}`, 20, 290)
+//   }
 
-  const pdfBlob = doc.output("blob")
-  const file = new File([pdfBlob], `formular_${form._id}_${Date.now()}.pdf`, { type: "application/pdf" })
 
-  const uploadedAsset = await client.assets.upload("file", file, {
-    filename: file.name,
-    contentType: file.type,
-  })
 
-  return {
-    assetId: uploadedAsset._id,
-  }
-}
+// const dynamicKeys = Object.keys(answers).filter(
+//   (key) => !key.startsWith("question_") && !key.startsWith("file_")
+// )
+
+// for (const key of dynamicKeys) {
+//   if (yPosition > 250) {
+//     doc.addPage()
+//     yPosition = 20
+//     doc.setFillColor(...primaryColor)
+//     doc.rect(0, 0, 210, 15, "F")
+//     doc.setTextColor(255, 255, 255)
+//     doc.setFontSize(14)
+//     doc.setFont("helvetica", "bold")
+//     doc.text("Formular-Dokumentation (Fortsetzung)", 105, 10, { align: "center" })
+//     doc.setTextColor(...textColor)
+//     doc.setFontSize(12)
+//   }
+
+//   doc.setFont("helvetica", "bold")
+//   doc.text(`Feld: ${key}`, 20, yPosition)
+//   yPosition += 7
+
+//   doc.setFont("helvetica", "normal")
+//   const val = answers[key]
+//   const answerText = Array.isArray(val)
+//     ? (val.length > 0 ? val.join(", ") : "Keine Auswahl")
+//     : (val?.toString() || "Keine Antwort")
+
+//   doc.text(`Antwort: ${answerText}`, 25, yPosition)
+//   yPosition += 10
+
+//   doc.setDrawColor(...accentColor)
+//   doc.line(20, yPosition, 190, yPosition)
+//   yPosition += 7
+// }
+
+
+
+//   const pdfBlob = doc.output("blob")
+//   const file = new File([pdfBlob], `formular_${form._id}_${Date.now()}.pdf`, { type: "application/pdf" })
+
+//   const uploadedAsset = await client.assets.upload("file", file, {
+//     filename: file.name,
+//     contentType: file.type,
+//   })
+
+//   return {
+//     assetId: uploadedAsset._id,
+//   }
+// }
 
 export async function submitCompletedForm(userId, form, answers, fileUploads = {}) {
   try {

@@ -46,6 +46,18 @@ export const userSchema = {
           },
         ],
       },
+
+      {
+        name: "uploadedFiles",
+        title: "Hochgeladene Dateien",
+        type: "array",
+        of: [
+          {
+            type: "file",
+            
+          },
+        ],
+      },
       {
         name: "category",
         title: "Kategorie",
